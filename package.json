@@ -1,0 +1,10 @@
+{
+  "name": "synapse",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Plateforme de revision - fiches, quiz et boutique",
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "stripe": "^16.12.0"
+  }
+}

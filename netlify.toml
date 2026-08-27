@@ -1,0 +1,11 @@
+[build]
+  command = "npm install"
+  publish = "."
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+# le webhook Stripe a besoin du corps brut pour vérifier la signature
+[functions."webhook-stripe"]
+  included_files = []
