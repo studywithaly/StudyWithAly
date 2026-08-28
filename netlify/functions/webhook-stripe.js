@@ -12,27 +12,39 @@ const admin = require("firebase-admin");
 //   1. FIREBASE_SERVICE_ACCOUNT : le fichier JSON entier, collé tel quel.
 //   2. Les trois variables séparées PROJECT_ID / CLIENT_EMAIL / PRIVATE_KEY.
 function identifiants(){
-  const brut = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if(brut && brut.trim()){
-    const j = JSON.parse(brut);
-    return {
-      projectId:   j.project_id,
-      clientEmail: j.client_email,
-      privateKey:  (j.private_key || "").replace(/\\n/g, "\n")
-    };
+  const brut = (process.env.FIREBASE_SERVICE_ACCOUNT || "").trim();
+
+  if(brut){
+    const nettoye = (brut.startsWith("'") || brut.startsWith('"'))
+      ? brut.slice(1, -1)
+      : brut;
+    const j = JSON.parse(nettoye);
+    let cle = j.private_key || "";
+    if(!cle.includes("\n")) cle = cle.replace(/\\n/g, "\n");
+    return { projectId: j.project_id, clientEmail: j.client_email, privateKey: cle };
   }
+
+  let cle = (process.env.FIREBASE_PRIVATE_KEY || "").trim();
+  if(cle.startsWith('"') && cle.endsWith('"')) cle = cle.slice(1, -1);
+  cle = cle.replace(/\\n/g, "\n");
+
   return {
-    projectId:   process.env.FIREBASE_PROJECT_ID,
-    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    // la clé peut contenir de vrais retours à la ligne ou la séquence \n
-    privateKey:  (process.env.FIREBASE_PRIVATE_KEY || "")
-                   .replace(/^["']|["']$/g, "")
-                   .replace(/\\n/g, "\n")
+    projectId:   (process.env.FIREBASE_PROJECT_ID || "").trim(),
+    clientEmail: (process.env.FIREBASE_CLIENT_EMAIL || "").trim(),
+    privateKey:  cle
   };
 }
 
 if(!admin.apps.length){
-  admin.initializeApp({ credential: admin.credential.cert(identifiants()) });
+  const ids = identifiants();
+  if(!ids.projectId || !ids.clientEmail || !ids.privateKey){
+    throw new Error("Identifiants Firebase absents : renseigne FIREBASE_SERVICE_ACCOUNT "
+      + "ou les trois variables séparées, scope Functions activé sur Netlify.");
+  }
+  if(!ids.privateKey.startsWith("-----BEGIN PRIVATE KEY-----")){
+    throw new Error("Clé privée mal formée : les délimiteurs BEGIN/END manquent.");
+  }
+  admin.initializeApp({ credential: admin.credential.cert(ids) });
 }
 const db = admin.firestore();
 
@@ -42,16 +54,28 @@ const reponse = (code, corps) => ({
   body: JSON.stringify(corps)
 });
 
-// Vérifie le jeton envoyé par le navigateur et renvoie l'identité du compte.
-async function utilisateurDepuisEntete(headers){
-  const brut = headers.authorization || headers.Authorization || "";
-  const jeton = brut.startsWith("Bearer ") ? brut.slice(7) : null;
-  if(!jeton) throw new Error("jeton absent");
-  const decode = await admin.auth().verifyIdToken(jeton);
-  return { uid: decode.uid, email: decode.email };
+// ---------------------------------------------------------------------------
+// Date de fin de période. Stripe a déplacé current_period_end de l'objet
+// Subscription vers ses items sur les versions récentes de l'API. On regarde
+// aux deux endroits, et on retombe sur un calcul manuel si rien n'est trouvé,
+// pour ne jamais écrire une date invalide dans les droits.
+// ---------------------------------------------------------------------------
+function finDePeriode(sub, plan){
+  const brut = sub.current_period_end
+    || (sub.items && sub.items.data && sub.items.data[0]
+        && sub.items.data[0].current_period_end);
+
+  if(brut && Number.isFinite(Number(brut))) return Number(brut) * 1000;
+
+  console.warn("current_period_end introuvable, calcul de repli", sub.id);
+  const jours = plan === "annuel" ? 365 : 30;
+  return Date.now() + jours * 86400000;
 }
 
 async function accorderAbonnement(uid, plan, finMs, statut, idAbo){
+  if(!Number.isFinite(finMs)){
+    throw new Error("date de fin invalide pour " + uid);
+  }
   await db.collection("droits").doc(uid).set({
     abo: { plan, fin: finMs, statut, stripeSub: idAbo || null },
     maj: Date.now()
@@ -77,8 +101,14 @@ async function enregistrerVente(v){
 exports.handler = async (event) => {
   let evt;
   try{
+    // Netlify encode parfois le corps en base64. constructEvent a besoin du
+    // corps brut octet pour octet, sinon la signature ne correspond pas.
+    const corpsBrut = event.isBase64Encoded
+      ? Buffer.from(event.body, "base64")
+      : event.body;
+
     evt = stripe.webhooks.constructEvent(
-      event.body,
+      corpsBrut,
       event.headers["stripe-signature"],
       process.env.STRIPE_SECRET_WEBHOOK
     );
@@ -93,7 +123,7 @@ exports.handler = async (event) => {
       case "checkout.session.completed": {
         const s = evt.data.object;
         const { uid, type, ref } = s.metadata || {};
-        if(!uid) break;
+        if(!uid){ console.warn("session sans uid", s.id); break; }
 
         if(type === "livre"){
           await ajouterAchat(uid, ref);
@@ -101,7 +131,7 @@ exports.handler = async (event) => {
         }
         if(type === "abo" && s.subscription){
           const sub = await stripe.subscriptions.retrieve(s.subscription);
-          await accorderAbonnement(uid, ref, sub.current_period_end * 1000, "actif", sub.id);
+          await accorderAbonnement(uid, ref, finDePeriode(sub, ref), "actif", sub.id);
           await enregistrerVente({ uid, type:"abo", ref, montant:s.amount_total/100, session:s.id });
         }
         break;
@@ -114,8 +144,9 @@ exports.handler = async (event) => {
         const sub = await stripe.subscriptions.retrieve(f.subscription);
         const uid = (sub.metadata || {}).uid;
         if(!uid) break;
-        await accorderAbonnement(uid, sub.metadata.plan || "mensuel", sub.current_period_end * 1000, "actif", sub.id);
-        await enregistrerVente({ uid, type:"abo", ref:sub.metadata.plan, montant:f.amount_paid/100, facture:f.id });
+        const plan = sub.metadata.plan || "mensuel";
+        await accorderAbonnement(uid, plan, finDePeriode(sub, plan), "actif", sub.id);
+        await enregistrerVente({ uid, type:"abo", ref:plan, montant:f.amount_paid/100, facture:f.id });
         break;
       }
 
@@ -124,9 +155,10 @@ exports.handler = async (event) => {
         const sub = evt.data.object;
         const uid = (sub.metadata || {}).uid;
         if(!uid) break;
+        const plan = sub.metadata.plan || "mensuel";
         const vivant = ["active","trialing","past_due"].includes(sub.status);
-        await accorderAbonnement(uid, sub.metadata.plan || "mensuel",
-          sub.current_period_end * 1000, vivant ? "actif" : "suspendu", sub.id);
+        await accorderAbonnement(uid, plan, finDePeriode(sub, plan),
+          vivant ? "actif" : "suspendu", sub.id);
         break;
       }
 
@@ -135,8 +167,8 @@ exports.handler = async (event) => {
         const sub = evt.data.object;
         const uid = (sub.metadata || {}).uid;
         if(!uid) break;
-        await accorderAbonnement(uid, sub.metadata.plan || "mensuel",
-          sub.current_period_end * 1000, "resilie", sub.id);
+        const plan = sub.metadata.plan || "mensuel";
+        await accorderAbonnement(uid, plan, finDePeriode(sub, plan), "resilie", sub.id);
         break;
       }
     }
