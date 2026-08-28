@@ -34,3 +34,12 @@ exports.handler = async () => {
   }
   return { statusCode: 200, body: JSON.stringify(out, null, 2) };
 };
+try {
+  const app = admin.apps.length ? admin.apps[0] : admin.initializeApp({
+    credential: admin.credential.cert(ids)
+  });
+  const jeton = await app.options.credential.getAccessToken();
+  out.etapes.push({ jeton_oauth: "ok", expire_dans: jeton.expires_in });
+} catch (e) {
+  out.etapes.push({ jeton_oauth: "REFUSE", message: e.message });
+}
