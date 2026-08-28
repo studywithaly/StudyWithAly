@@ -147,3 +147,9 @@ exports.handler = async (event) => {
     return reponse(500, { erreur: e.message });
   }
 };
+session = await stripe.checkout.sessions.create({
+  mode:"subscription",
+  customer: client,
+  managed_payments: { enabled: false },
+  line_items:[{
+  ...
