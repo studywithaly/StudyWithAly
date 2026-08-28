@@ -8,14 +8,31 @@ const stripe = require("stripe")(process.env.STRIPE_CLE_SECRETE);
 // ---------------------------------------------------------------------------
 const admin = require("firebase-admin");
 
+// Identifiants Firebase. Deux façons de les fournir, au choix :
+//   1. FIREBASE_SERVICE_ACCOUNT : le fichier JSON entier, collé tel quel.
+//   2. Les trois variables séparées PROJECT_ID / CLIENT_EMAIL / PRIVATE_KEY.
+function identifiants(){
+  const brut = process.env.FIREBASE_SERVICE_ACCOUNT;
+  if(brut && brut.trim()){
+    const j = JSON.parse(brut);
+    return {
+      projectId:   j.project_id,
+      clientEmail: j.client_email,
+      privateKey:  (j.private_key || "").replace(/\\n/g, "\n")
+    };
+  }
+  return {
+    projectId:   process.env.FIREBASE_PROJECT_ID,
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+    // la clé peut contenir de vrais retours à la ligne ou la séquence \n
+    privateKey:  (process.env.FIREBASE_PRIVATE_KEY || "")
+                   .replace(/^["']|["']$/g, "")
+                   .replace(/\\n/g, "\n")
+  };
+}
+
 if(!admin.apps.length){
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId:   process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey:  (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n")
-    })
-  });
+  admin.initializeApp({ credential: admin.credential.cert(identifiants()) });
 }
 const db = admin.firestore();
 
