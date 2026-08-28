@@ -13,27 +13,40 @@ const admin = require("firebase-admin");
 //   1. FIREBASE_SERVICE_ACCOUNT : le fichier JSON entier, collé tel quel.
 //   2. Les trois variables séparées PROJECT_ID / CLIENT_EMAIL / PRIVATE_KEY.
 function identifiants(){
-  const brut = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if(brut && brut.trim()){
-    const j = JSON.parse(brut);
-    return {
-      projectId:   j.project_id,
-      clientEmail: j.client_email,
-      privateKey:  (j.private_key || "").replace(/\\n/g, "\n")
-    };
+  const brut = (process.env.FIREBASE_SERVICE_ACCOUNT || "").trim();
+
+  if(brut){
+    // Netlify garde parfois les guillemets englobants au collage
+    const nettoye = (brut.startsWith("'") || brut.startsWith('"'))
+      ? brut.slice(1, -1)
+      : brut;
+    const j = JSON.parse(nettoye);
+    let cle = j.private_key || "";
+    if(!cle.includes("\n")) cle = cle.replace(/\\n/g, "\n");
+    return { projectId: j.project_id, clientEmail: j.client_email, privateKey: cle };
   }
+
+  let cle = (process.env.FIREBASE_PRIVATE_KEY || "").trim();
+  if(cle.startsWith('"') && cle.endsWith('"')) cle = cle.slice(1, -1);
+  cle = cle.replace(/\\n/g, "\n");
+
   return {
-    projectId:   process.env.FIREBASE_PROJECT_ID,
-    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    // la clé peut contenir de vrais retours à la ligne ou la séquence \n
-    privateKey:  (process.env.FIREBASE_PRIVATE_KEY || "")
-                   .replace(/^["']|["']$/g, "")
-                   .replace(/\\n/g, "\n")
+    projectId:   (process.env.FIREBASE_PROJECT_ID || "").trim(),
+    clientEmail: (process.env.FIREBASE_CLIENT_EMAIL || "").trim(),
+    privateKey:  cle
   };
 }
 
 if(!admin.apps.length){
-  admin.initializeApp({ credential: admin.credential.cert(identifiants()) });
+  const ids = identifiants();
+  if(!ids.projectId || !ids.clientEmail || !ids.privateKey){
+    throw new Error("Identifiants Firebase absents : renseigne FIREBASE_SERVICE_ACCOUNT "
+      + "ou les trois variables séparées, scope Functions activé sur Netlify.");
+  }
+  if(!ids.privateKey.startsWith("-----BEGIN PRIVATE KEY-----")){
+    throw new Error("Clé privée mal formée : les délimiteurs BEGIN/END manquent.");
+  }
+  admin.initializeApp({ credential: admin.credential.cert(ids) });
 }
 const db = admin.firestore();
 
@@ -64,6 +77,11 @@ const optionsTva = TVA_AUTO ? {
   // un client professionnel peut saisir son numéro de TVA intracommunautaire
   tax_id_collection: { enabled: true }
 } : {};
+
+// Managed Payments (Stripe vendeur officiel) est activé par défaut sur les
+// nouveaux comptes et exige un code fiscal sur chaque produit. On le désactive
+// tant que le statut juridique et la TVA ne sont pas tranchés.
+const SANS_MANAGED_PAYMENTS = { managed_payments: { enabled: false } };
 
 const PLANS = {
   mensuel: { libelle:"Abonnement mensuel", montant:500,  intervalle:"month" },
@@ -99,6 +117,7 @@ exports.handler = async (event) => {
       session = await stripe.checkout.sessions.create({
         mode:"subscription",
         customer: client,
+        ...SANS_MANAGED_PAYMENTS,
         line_items:[{
           quantity:1,
           price_data:{
@@ -122,6 +141,7 @@ exports.handler = async (event) => {
       session = await stripe.checkout.sessions.create({
         mode:"payment",
         customer: client,
+        ...SANS_MANAGED_PAYMENTS,
         line_items:[{
           quantity:1,
           price_data:{
@@ -147,9 +167,3 @@ exports.handler = async (event) => {
     return reponse(500, { erreur: e.message });
   }
 };
-session = await stripe.checkout.sessions.create({
-  mode:"subscription",
-  customer: client,
-  managed_payments: { enabled: false },
-  line_items:[{
-  ...
