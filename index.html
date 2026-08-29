@@ -587,823 +587,9 @@ const CONTENU_INITIAL = {
     {id:"mol",  nom:"Biologie moléculaire",  c1:"#EC4899", c2:"#8B5CF6", desc:"ADN, ARN, protéines et techniques du labo."}
   ],
 
-  fiches:[
-    /* ---------------- ANATOMIE ---------------- */
-    {id:"f-an-01",m:"anat",ch:"Système locomoteur",t:"Le crâne",prem:false,s:[
-      {h:"Les os de la boîte crânienne",l:[
-        "<b>Os frontal</b> : protège le cerveau et forme la structure du visage.",
-        "<b>Os occipital</b> : protège le cervelet, porte le <i>foramen magnum</i> par lequel passe la moelle épinière.",
-        "<b>Sphénoïde</b> : forme de papillon, relie plusieurs os du crâne, porte la <i>selle turcique</i> où se loge l'hypophyse.",
-        "<b>Ethmoïde</b> : participe aux parois des orbites, aux fosses nasales et au plancher de la boîte crânienne ; porte la <i>crista galli</i> où s'insèrent les méninges.",
-        "<b>Pariétaux</b> : os pairs et symétriques articulés sur la ligne médiane, protègent les hémisphères.",
-        "<b>Temporaux</b> : base et parois latérales, abritent les organes de l'audition et de l'équilibre, ancrage des muscles de la mâchoire et du cou."
-      ]},
-      {h:"Sutures à connaître",l:[
-        "<b>Coronale</b> : entre frontal et pariétaux.",
-        "<b>Sagittale</b> : entre les deux pariétaux.",
-        "<b>Lambdoïde</b> : entre pariétaux et occipital."
-      ]}
-    ],note:"Le foramen magnum est le repère le plus constant en imagerie : il marque la jonction entre bulbe rachidien et moelle épinière."},
-
-    {id:"f-an-02",m:"anat",ch:"Système locomoteur",t:"La colonne vertébrale",prem:false,s:[
-      {h:"Quatre fonctions majeures",l:[
-        "<b>Support</b> : porte le poids de la tête et du tronc, le transfère au bassin.",
-        "<b>Protection</b> : forme le canal rachidien qui abrite la moelle épinière.",
-        "<b>Mouvement</b> : flexion, extension, rotation, inclinaison.",
-        "<b>Ancrage</b> : insertion des muscles posturaux, des ligaments et des côtes."
-      ]},
-      {h:"26 os répartis en 5 étages",l:[
-        "<b>7 vertèbres cervicales</b> : mobilité de la tête, protection de la moelle.",
-        "<b>12 vertèbres thoraciques</b> : moins mobiles car articulées avec les côtes.",
-        "<b>5 vertèbres lombaires</b> : les plus volumineuses, flexion/extension importantes mais peu de rotation.",
-        "<b>Sacrum</b> : stabilité du bassin, transmission des charges vers les membres inférieurs.",
-        "<b>Coccyx</b> : point d'ancrage."
-      ]},
-      {h:"Structure d'une vertèbre",l:[
-        "<b>Corps vertébral</b> : supporte le poids.",
-        "<b>Arc postérieur</b> : lame + pédicule.",
-        "<b>Processus articulaire</b> : articulation entre vertèbres ; <b>transverse</b> : insertion musculaire ; <b>épineux</b> : palpable en surface.",
-        "<b>Foramen vertébral</b> : l'empilement forme le canal rachidien."
-      ]},
-      {h:"Disques intervertébraux",l:[
-        "<b>Nucleus pulposus</b> : centre gélatineux très hydraté, amortit les chocs.",
-        "<b>Annulus fibrosus</b> : anneaux fibreux concentriques, résistent à la tension."
-      ]}
-    ],note:"La forme en S augmente l'élasticité : courbures cervicale et lombaire concaves en arrière, thoracique et sacrée convexes."},
-
-    {id:"f-an-03",m:"anat",ch:"Système locomoteur",t:"Le thorax",prem:false,s:[
-      {h:"Cadre osseux",l:[
-        "<b>Sternum</b> : deux jonctions clés, l'angle sternal et l'articulation sterno-costale.",
-        "<b>Côtes 1 à 7</b> (vraies) : attache directe au sternum.",
-        "<b>Côtes 8 à 10</b> (fausses) : cartilage commun.",
-        "<b>Côtes 11 et 12</b> (flottantes) : sans attache sternale.",
-        "<b>Vertèbres thoraciques</b> : s'articulent avec les côtes."
-      ]},
-      {h:"Muscles",l:[
-        "<b>Intercostaux externes</b> : inspiration. <b>Internes</b> : expiration.",
-        "<b>Diaphragme</b> : muscle principal de la respiration, innervé par le nerf phrénique.",
-        "<b>Dentelé antérieur</b> : rotation ascendante de la scapula.",
-        "<b>Subclavier</b> : abaisse la clavicule, élève la première côte.",
-        "<b>Petit et grand pectoral</b> : abaissent l'épaule, rotateurs internes."
-      ]},
-      {h:"Contenu de la cavité",l:[
-        "<b>Médiastin supérieur</b> : trachée, gros vaisseaux, thymus.",
-        "<b>Médiastin moyen</b> : cœur et péricarde.",
-        "<b>Médiastin postérieur</b> : œsophage, aorte thoracique, veine azygos, canal thoracique.",
-        "<b>Poumons</b> : 3 lobes à droite, 2 à gauche."
-      ]}
-    ]},
-
-    {id:"f-an-04",m:"anat",ch:"Système locomoteur",t:"Ceintures et membres",prem:true,s:[
-      {h:"Ceinture scapulaire",l:[
-        "<b>Clavicule</b> : stabilité et mobilité de l'épaule, protège certaines structures du cou.",
-        "<b>Scapula</b> : attache de nombreux muscles du bras, du cou et du thorax.",
-        "<b>Processus coracoïde</b> : insertion musculaire. <b>Cavité glénoïdale</b> : articulation avec la tête humérale.",
-        "Élévateurs : trapèze supérieur, élévateur de la scapula. Abaisseurs : trapèze inférieur, petit pectoral.",
-        "Coiffe des rotateurs : subscapulaire, sus-épineux, infra-épineux, petit rond."
-      ]},
-      {h:"Ceinture pelvienne",l:[
-        "<b>Os coxal</b> : 3 parties soudées, ilion, ischion et pubis. Complété par le <b>sacrum</b>.",
-        "<b>Piriforme</b> et <b>obturateur interne</b> : rotation externe de la hanche.",
-        "<b>Ilio-psoas</b> : flexion de hanche. <b>Grand fessier</b> : extension. <b>Moyen et petit fessier</b> : abduction et stabilisation."
-      ]},
-      {h:"Membre supérieur",l:[
-        "Épaule : clavicule + scapula. Bras : humérus (biceps, triceps brachial).",
-        "Avant-bras : radius (latéral) et ulna (médial), muscles épitrochléens et épicondyliens.",
-        "Main : 8 os du carpe, 5 métacarpiens, 14 phalanges, éminences thénar et hypothénar."
-      ]},
-      {h:"Membre inférieur",l:[
-        "Hanche : os coxal. Cuisse : fémur (quadriceps, ischio-jambiers, adducteurs).",
-        "Jambe : tibia (médial) et fibula, triceps sural et fibulaires.",
-        "Pied : 7 os du tarse, 5 métatarses, phalanges."
-      ]}
-    ]},
-
-    {id:"f-an-04b",m:"anat",ch:"Système locomoteur",t:"Les articulations",prem:false,s:[
-      {h:"Classification selon la structure",l:[
-        "<b>Fibreuses</b> : pas de cavité articulaire, les os sont unis par du tissu conjonctif fibreux. Immobiles ou très peu mobiles, comme les sutures du crâne.",
-        "<b>Cartilagineuses</b> : os unis par du cartilage, sans cavité articulaire, légèrement mobiles. Deux types : la synchondrose (cartilage de croissance) et la symphyse (symphyse pubienne, disques intervertébraux).",
-        "<b>Synoviales</b> : présence d'une cavité articulaire remplie de liquide synovial, très mobiles."
-      ]},
-      {h:"Composition d'une articulation synoviale",l:[
-        "<b>Cartilage articulaire</b> : recouvre les surfaces osseuses, amortit et diminue les frottements.",
-        "<b>Capsule articulaire</b> : manchon fibreux doublé de la membrane synoviale qui sécrète le liquide.",
-        "<b>Ligaments</b> : renforcent la capsule et limitent les mouvements excessifs.",
-        "<b>Ménisques</b> et bourrelets : présents dans certaines articulations, ils améliorent la congruence des surfaces."
-      ]},
-      {h:"Les mouvements articulaires",l:[
-        "<b>Flexion</b> : diminution de l'angle, comme la flexion du genou. <b>Extension</b> : augmentation de l'angle, comme l'extension du coude.",
-        "<b>Abduction</b> : éloignement du plan médian, le bras qui s'élève latéralement. <b>Adduction</b> : rapprochement du plan médian.",
-        "<b>Rotation</b> : mouvement autour d'un axe longitudinal, comme la rotation de la tête.",
-        "<b>Circumduction</b> : mouvement circulaire combiné, possible à l'épaule et à la hanche.",
-        "<b>Pronation</b> : paume vers le bas. <b>Supination</b> : paume vers le haut. Les deux concernent l'avant-bras.",
-        "<b>Inversion</b> : plante du pied vers l'intérieur. <b>Éversion</b> : plante vers l'extérieur. Les deux concernent la cheville."
-      ]}
-    ],note:"Retiens le repère : plus une articulation est mobile, moins elle est stable. L'épaule est la plus mobile du corps et aussi la plus luxable."},
-
-    {id:"f-an-05",m:"anat",ch:"Système locomoteur",t:"Le muscle squelettique",prem:true,s:[
-      {h:"Organisation macroscopique",l:[
-        "<b>Épimysium</b> : entoure l'ensemble du muscle.",
-        "<b>Périmysium</b> : entoure les faisceaux de fibres.",
-        "<b>Endomysium</b> : entoure chaque fibre, contient capillaires et nerfs."
-      ]},
-      {h:"La fibre musculaire",l:[
-        "Cellule géante multinucléée née de la fusion de myoblastes (syncytium).",
-        "<b>Sarcolemme</b> : membrane plasmique. <b>Sarcoplasme</b> : cytoplasme, riche en mitochondries, glycogène et myoglobine.",
-        "Striations : alternance de bandes sombres (A) et claires (I) ; l'unité contractile est le <b>sarcomère</b>, entre deux lignes Z."
-      ]},
-      {h:"Sarcomère et filaments",l:[
-        "<b>Disque Z</b> : ancrage des filaments fins d'actine.",
-        "<b>Bande I</b> : filaments fins seuls. <b>Bande A</b> : épais + fins superposés. <b>Zone H</b> : filaments épais seuls. <b>Ligne M</b> : stabilise la myosine.",
-        "<b>Actine</b> : double brin hélicoïdal associé à la tropomyosine et à la troponine, sert de piste.",
-        "<b>Myosine</b> : têtes à activité ATPasique qui tirent l'actine, moteur de la contraction."
-      ]},
-      {h:"Couplage excitation-contraction",l:[
-        "<b>Tubules T</b> : invaginations du sarcolemme aux jonctions A-I, propagent le potentiel d'action.",
-        "<b>Réticulum sarcoplasmique</b> : stocke le calcium, le libère par les citernes terminales.",
-        "1 tubule T + 2 citernes terminales = <b>triade</b>.",
-        "Plaque motrice : libération d'acétylcholine → dépolarisation → contraction.",
-        "<b>Unité motrice</b> : 1 motoneurone α + les fibres qu'il innerve. Plus elle est petite, plus le mouvement est précis."
-      ]}
-    ],note:"Fuseaux neuromusculaires = étirement ; organes tendineux de Golgi = tension. Base des réflexes myotatiques."},
-
-    {id:"f-an-06",m:"anat",ch:"Système nerveux",t:"Système nerveux central",prem:false,s:[
-      {h:"Les quatre lobes",l:[
-        "<b>Frontal</b> : cortex moteur primaire (aire 4), aire prémotrice (6), aire de Broca (44-45), fonctions exécutives, personnalité.",
-        "<b>Pariétal</b> : cortex somesthésique (aires 1, 2, 3), intégration sensorielle, perception spatiale, calcul, écriture.",
-        "<b>Temporal</b> : cortex auditif (aire 41), aire de Wernicke (22), hippocampe (mémoire), amygdale (émotions).",
-        "<b>Occipital</b> : cortex visuel primaire (17) et secondaire (18, 19), analyse des formes, couleurs et mouvements."
-      ]},
-      {h:"Cortex cérébral",l:[
-        "Couche externe de substance grise, 2 à 4 mm d'épaisseur.",
-        "Six couches du néocortex : moléculaire, granulaire externe, pyramidale externe, granulaire interne, pyramidale interne, cellules polymorphes.",
-        "<b>Néocortex</b> : sensoriel et moteur volontaire. <b>Paléocortex</b> : olfaction, récompense. <b>Archicortex</b> : mémoire et émotions.",
-        "Contrôle croisé : hémisphère gauche → hémicorps droit."
-      ]},
-      {h:"Cervelet",l:[
-        "Situé dans la fosse postérieure, en arrière du tronc cérébral.",
-        "2 hémisphères, un vermis médian, 3 lobes : antérieur (initiation du mouvement), postérieur (posture, force, direction), flocculo-nodulaire (équilibre, mouvements oculaires).",
-        "Substance grise en périphérie, blanche en profondeur.",
-        "Noyaux profonds : dentelé, emboliforme, globuleux, fastigial."
-      ]},
-      {h:"Tronc cérébral et moelle",l:[
-        "Tronc cérébral : relais des voies, origine des 12 paires de nerfs crâniens sauf I et II, centres vitaux du bulbe (respiratoire, cardio-inhibiteur, vasomoteur).",
-        "Moelle épinière : du foramen magnum au cône médullaire (L1-L2), 31 paires de nerfs spinaux (8 C, 12 T, 5 L, 5 S, 1 Co).",
-        "Substance grise au centre, blanche en périphérie."
-      ]}
-    ],note:"Syndrome cérébelleux : ataxie, dysmétrie, adiadococinésie, tremblement d'action, dysarthrie, nystagmus."},
-
-    {id:"f-an-07",m:"anat",ch:"Système nerveux",t:"Nerfs crâniens et spinaux",prem:true,s:[
-      {h:"Les 12 paires crâniennes",l:[
-        "<b>I olfactif</b> : odorat. <b>II optique</b> : vision. <b>III oculomoteur</b> : mouvements oculaires, réflexe pupillaire.",
-        "<b>IV trochléaire</b> : oblique supérieur. <b>V trijumeau</b> : sensibilité du visage, mastication. <b>VI abducens</b> : droit latéral.",
-        "<b>VII facial</b> : muscles de la face, goût des 2/3 antérieurs de la langue, sécrétions.",
-        "<b>VIII vestibulocochléaire</b> : audition et équilibre. <b>IX glossopharyngien</b> : goût du 1/3 postérieur, déglutition.",
-        "<b>X vague</b> : fonctions parasympathiques viscérales. <b>XI accessoire</b> : trapèze et SCM. <b>XII hypoglosse</b> : langue."
-      ]},
-      {h:"Fonction végétative parasympathique",l:[
-        "III → constriction pupillaire (sphincter de l'iris).",
-        "VII → glandes lacrymales et salivaires.",
-        "IX → glande parotide.",
-        "X → cœur, poumons, tube digestif."
-      ]},
-      {h:"Nerfs spinaux",l:[
-        "31 paires, nerfs mixtes (fibres sensitives et motrices).",
-        "<b>Racine dorsale</b> : sensitive, porte le ganglion spinal. <b>Racine ventrale</b> : motrice.",
-        "Rameaux : dorsal (dos), ventral (plexus), méningé, communicant (lien avec le SNA).",
-        "Plexus : cervical (nerf phrénique), brachial (membre supérieur), lombaire (nerf fémoral), sacral (nerf sciatique), coccygien."
-      ]}
-    ],note:"8 nerfs cervicaux pour seulement 7 vertèbres cervicales."},
-
-    {id:"f-an-08",m:"anat",ch:"Système nerveux",t:"Système nerveux autonome",prem:true,s:[
-      {h:"Sympathique — préparation à l'action",l:[
-        "Origine <b>thoraco-lombaire</b> (T1 à L2).",
-        "Neurone préganglionnaire court → acétylcholine sur récepteur nicotinique.",
-        "Neurone postganglionnaire long → noradrénaline sur récepteurs α et β (exception : glandes sudoripares, acétylcholine muscarinique).",
-        "Ganglions : chaîne paravertébrale et ganglions prévertébraux (cœliaque, mésentériques)."
-      ]},
-      {h:"Effets sympathiques",l:[
-        "Cœur : ↑ fréquence et force. Poumons : bronchodilatation. Yeux : mydriase.",
-        "Tube digestif : ↓ motilité et sécrétions. Foie : ↑ glycogénolyse.",
-        "Vessie : relaxation du détrusor, contraction du sphincter. Peau : vasoconstriction et sudation."
-      ]},
-      {h:"Parasympathique — repos et digestion",l:[
-        "Origine <b>crânio-sacrée</b> : nerfs III, VII, IX, X et moelle S2-S4.",
-        "Neurone préganglionnaire long, postganglionnaire court près de l'organe cible.",
-        "Acétylcholine partout : nicotinique dans le ganglion, muscarinique sur l'organe.",
-        "Effets : ↓ fréquence cardiaque, bronchoconstriction, myosis, ↑ sécrétions et motilité digestives, contraction du détrusor, érection."
-      ]}
-    ],note:"Atropine = blocage muscarinique → mydriase et tachycardie. Intoxication aux organophosphorés = syndrome cholinergique (myosis, bradycardie, diarrhée, bronchorrhée)."},
-
-    {id:"f-an-09",m:"anat",ch:"Système cardio-vasculaire",t:"Le cœur",prem:false,s:[
-      {h:"Quatre cavités",l:[
-        "<b>Oreillette droite</b> : reçoit le sang veineux systémique par les veines caves supérieure et inférieure et le sinus coronaire.",
-        "<b>Oreillette gauche</b> : reçoit le sang oxygéné des quatre veines pulmonaires.",
-        "<b>Ventricule droit</b> : éjecte vers le tronc pulmonaire.",
-        "<b>Ventricule gauche</b> : éjecte dans l'aorte, paroi bien plus épaisse."
-      ]},
-      {h:"Valvules",l:[
-        "<b>Tricuspide</b> : oreillette droite / ventricule droit, trois cuspides reliées aux cordages tendineux et aux muscles papillaires.",
-        "<b>Mitrale</b> (bicuspide) : oreillette gauche / ventricule gauche, deux cuspides.",
-        "<b>Pulmonaire</b> et <b>aortique</b> : sigmoïdes, s'ouvrent à la systole. Les sinus aortiques donnent naissance aux artères coronaires."
-      ]},
-      {h:"Parois et repères",l:[
-        "<b>Endocarde</b> : couche interne lisse. <b>Myocarde</b> : muscle strié cardiaque. <b>Péricarde</b> : enveloppe fibreuse et séreuse.",
-        "Situé dans le médiastin moyen ; apex vers le bas, l'avant et la gauche (5ᵉ espace intercostal gauche).",
-        "Sillon coronaire : sépare oreillettes et ventricules, contient les artères coronaires."
-      ]},
-      {h:"Trajet du sang",l:[
-        "Petite circulation : OD → tricuspide → VD → valve pulmonaire → poumons.",
-        "Grande circulation : veines pulmonaires → OG → mitrale → VG → valve aortique → aorte → organes."
-      ]}
-    ],note:"Le squelette fibreux isole électriquement oreillettes et ventricules, sauf au niveau du faisceau de His."},
-
-    {id:"f-an-10",m:"anat",ch:"Système cardio-vasculaire",t:"Vaisseaux sanguins",prem:false,s:[
-      {h:"Artères",l:[
-        "Vaisseaux efférents : quittent le cœur, sang riche en O₂ sauf les artères pulmonaires.",
-        "Trois tuniques : <b>intima</b> (endothélium + lame basale), <b>média</b> (muscle lisse, épaisse), <b>adventice</b> (conjonctif).",
-        "Calibre décroissant : artères → artérioles → capillaires."
-      ]},
-      {h:"Veines",l:[
-        "Vaisseaux afférents : ramènent le sang au cœur, pauvre en O₂ sauf les veines pulmonaires.",
-        "Paroi plus fine, valvules anti-reflux dans les membres inférieurs.",
-        "Retour veineux aidé par la pompe musculaire et la pression négative thoracique."
-      ]},
-      {h:"Capillaires",l:[
-        "Seul site des échanges métaboliques, paroi réduite à un endothélium sur lame basale, 5 à 10 µm.",
-        "<b>Continus</b> : jonctions serrées (cerveau, muscle). <b>Fenestrés</b> : pores (rein, intestin). <b>Discontinus</b> ou sinusoïdes (foie, moelle osseuse)."
-      ]}
-    ]},
-
-    {id:"f-an-11",m:"anat",ch:"Système respiratoire",t:"Voies aériennes et poumons",prem:false,s:[
-      {h:"Voies supérieures",l:[
-        "<b>Fosses nasales</b> : réchauffent, humidifient et filtrent l'air ; cornets supérieur, moyen, inférieur ; olfaction au plafond.",
-        "<b>Pharynx</b> : carrefour aéro-digestif en trois étages, naso-, oro- et laryngopharynx.",
-        "<b>Larynx</b> : cartilages thyroïde, cricoïde, aryténoïdes et épiglotte ; phonation par les cordes vocales."
-      ]},
-      {h:"Trachée et bronches",l:[
-        "Trachée : 10 à 12 cm, de C6 à T4-T5, 15 à 20 anneaux cartilagineux incomplets, muscle trachéal en arrière.",
-        "Bronche principale <b>droite</b> : courte, large, verticale → 3 bronches lobaires. Plus exposée aux corps étrangers inhalés.",
-        "Bronche principale <b>gauche</b> : longue, étroite, horizontale → 2 bronches lobaires.",
-        "Division : lobaires → segmentaires → bronchioles → bronchioles terminales (fin de la zone de conduction) → bronchioles respiratoires."
-      ]},
-      {h:"Alvéoles",l:[
-        "300 à 500 millions par poumon, surface d'échange de 70 à 100 m², paroi de 0,5 µm.",
-        "<b>Pneumocytes I</b> : aplatis, diffusion des gaz. <b>Pneumocytes II</b> : surfactant, évite le collapsus. <b>Macrophages alvéolaires</b> : défense."
-      ]},
-      {h:"Plèvres",l:[
-        "<b>Pariétale</b> : tapisse le thorax, très sensible à la douleur. <b>Viscérale</b> : adhère au poumon, insensible.",
-        "Cavité pleurale virtuelle à pression négative, liquide pleural lubrifiant.",
-        "Pneumothorax, pleurésie et épanchement pleural en perturbent la mécanique."
-      ]}
-    ]},
-
-    {id:"f-an-12",m:"anat",ch:"Système digestif",t:"Tube digestif et glandes annexes",prem:true,s:[
-      {h:"Bouche et œsophage",l:[
-        "32 dents adultes, langue, glandes parotides, submandibulaires et sublinguales ; amylase salivaire.",
-        "Œsophage : 25 cm, de C6 à T11, traverse le diaphragme en T10.",
-        "Trois constrictions : jonction pharyngo-œsophagienne (C6), arc aortique (T4-T5), hiatus diaphragmatique (T10).",
-        "Musculeuse : 1/3 supérieur strié, 1/3 moyen mixte, 1/3 inférieur lisse."
-      ]},
-      {h:"Estomac",l:[
-        "Portions : cardia, fundus, corps, antre pylorique, pylore.",
-        "<b>Cellules pariétales</b> : HCl et facteur intrinsèque (absorption de la vitamine B12).",
-        "<b>Cellules principales</b> : pepsinogène. <b>Cellules muqueuses</b> : mucus protecteur."
-      ]},
-      {h:"Intestin grêle",l:[
-        "6 à 7 m entre pylore et valvule iléo-cæcale.",
-        "<b>Duodénum</b> (25 cm) : reçoit bile et suc pancréatique. <b>Jéjunum</b> (2,5 m) : absorption principale. <b>Iléon</b> (3,5 m) : sels biliaires et vitamine B12.",
-        "Villosités, microvillosités en bordure en brosse, cryptes de Lieberkühn."
-      ]},
-      {h:"Côlon",l:[
-        "1,5 m : cæcum avec l'appendice, côlon ascendant, transverse, descendant, sigmoïde, puis rectum.",
-        "Particularités : haustrations, tænia coli (bandes musculaires longitudinales), appendices épiploïques.",
-        "Absorption de l'eau et des électrolytes, formation des selles, fermentation par le microbiote.",
-        "Sphincter anal interne involontaire, sphincter anal externe volontaire."
-      ]}
-    ]},
-
-    {id:"f-an-12b",m:"anat",ch:"Système digestif",t:"Les organes annexes",prem:true,s:[
-      {h:"Le foie",l:[
-        "Plus grand organe interne, environ 1,5 kg, dans l'hypochondre droit, recouvert de péritoine sauf la zone nue.",
-        "Deux lobes anatomiques, face diaphragmatique convexe et face viscérale en contact avec estomac, vésicule et duodénum.",
-        "<b>Hile hépatique</b> : entrée de la veine porte et de l'artère hépatique, sortie des voies biliaires.",
-        "Fonctions : métabolisme des glucides, lipides et protéines, détoxification, synthèse de l'albumine et des facteurs de coagulation, stockage du glycogène, du fer et des vitamines A, D et B12, sécrétion de la bile.",
-        "Histologie : lobules hépatiques, hépatocytes, sinusoïdes et canalicules biliaires."
-      ]},
-      {h:"Le pancréas",l:[
-        "Glande mixte allongée, environ 15 cm, en position rétro-péritonéale dans l'épigastre.",
-        "Quatre parties : tête dans le cadre duodénal, processus unciné, corps, queue orientée vers la rate.",
-        "<b>Exocrine</b> : amylase, lipase et protéases déversées dans le duodénum.",
-        "<b>Endocrine</b> : insuline et glucagon via les îlots de Langerhans.",
-        "Conduit principal de Wirsung, rejoint par le cholédoque à l'ampoule de Vater ; conduit accessoire de Santorini inconstant."
-      ]},
-      {h:"La vésicule biliaire",l:[
-        "Petit organe piriforme de 7 à 10 cm, accolé à la face inférieure du foie.",
-        "Trois parties : fundus parfois palpable, corps, collet prolongé par le canal cystique.",
-        "Stocke et concentre la bile, la libère dans le duodénum lors d'un repas riche en graisses.",
-        "Canal cystique + canal hépatique commun = <b>canal cholédoque</b>."
-      ]}
-    ],note:"Le foie est central pour le métabolisme, le pancréas a un rôle double digestif et hormonal, la vésicule ne fait que stocker et concentrer."},
-
-    {id:"f-an-13",m:"anat",ch:"Système urinaire",t:"Reins et voies urinaires",prem:true,s:[
-      {h:"Structure du rein",l:[
-        "Organes rétro-péritonéaux de T12 à L3.",
-        "<b>Cortex</b> : aspect granuleux, corpuscules rénaux et tubules contournés.",
-        "<b>Médullaire</b> : 8 à 18 pyramides, anses de Henle et tubes collecteurs, papilles rénales.",
-        "<b>Sinus rénal</b> : calices mineurs, calices majeurs, bassinet → uretère."
-      ]},
-      {h:"Le néphron",l:[
-        "Unité fonctionnelle, environ 1 million par rein.",
-        "<b>Corpuscule de Malpighi</b> : glomérule + capsule de Bowman, site de filtration.",
-        "<b>Tube contourné proximal</b> : réabsorption massive (eau, sodium, glucose).",
-        "<b>Anse de Henle</b> : concentration de l'urine, branche descendante perméable à l'eau, ascendante aux ions.",
-        "<b>Tube contourné distal</b> : réglage fin sous contrôle de l'aldostérone et de la PTH.",
-        "<b>Tube collecteur</b> : sensible à l'ADH."
-      ]},
-      {h:"Vessie et urètre",l:[
-        "Capacité 300 à 500 mL, urothélium, muscle détrusor, trigone vésical très innervé.",
-        "Parasympathique : contraction du détrusor. Sympathique : remplissage.",
-        "Urètre féminin : 3 à 4 cm, uniquement urinaire, plus exposé aux infections.",
-        "Urètre masculin : 18 à 20 cm, segments intramural, prostatique, membraneux et spongieux."
-      ]}
-    ]},
-
-    {id:"f-an-13b",m:"anat",ch:"Système génital",t:"Appareil génital masculin",prem:true,s:[
-      {h:"Organes externes",l:[
-        "<b>Pénis</b> : organe érectile, rôle dans l'accouplement et l'excrétion urinaire. Trois corps érectiles : deux corps caverneux dorsaux et un corps spongieux ventral qui entoure l'urètre. Terminé par le gland, avec le méat urinaire au sommet.",
-        "<b>Scrotum</b> : sac cutané contenant les testicules, il maintient une température inférieure à celle du corps, indispensable à la spermatogenèse."
-      ]},
-      {h:"Organes internes",l:[
-        "<b>Testicules</b> : glandes mixtes, exocrines pour les spermatozoïdes et endocrines pour la testostérone. Entourés de l'albuginée, ils contiennent les tubes séminifères.",
-        "<b>Épididyme</b> : sur la face postérieure du testicule, assure la maturation et le stockage des spermatozoïdes.",
-        "<b>Canal déférent</b> : transporte les spermatozoïdes vers la prostate, forme le canal éjaculateur après union avec la vésicule séminale.",
-        "<b>Vésicules séminales</b> : en arrière de la vessie, sécrètent un liquide alcalin riche en fructose qui nourrit les spermatozoïdes.",
-        "<b>Prostate</b> : sous la vessie, entoure l'urètre prostatique, sécrète un fluide qui facilite la motilité des spermatozoïdes.",
-        "<b>Glandes bulbo-urétrales de Cowper</b> : sécrètent un mucus lubrifiant avant l'éjaculation."
-      ]}
-    ],note:"Les testicules produisent les spermatozoïdes et la testostérone ; la prostate et les glandes annexes fabriquent le reste du sperme."},
-
-    {id:"f-an-13c",m:"anat",ch:"Système génital",t:"Appareil génital féminin",prem:true,s:[
-      {h:"Organes internes",l:[
-        "<b>Ovaires</b> : glandes mixtes, exocrines par l'ovulation et endocrines par la sécrétion d'œstrogènes et de progestérone. Situés dans le petit bassin, reliés à l'utérus par le ligament ovarien.",
-        "<b>Trompes utérines</b> : quatre segments, infundibulum, ampoule, isthme et portion utérine. Elles recueillent l'ovocyte ; l'ampoule est le lieu habituel de la fécondation.",
-        "<b>Utérus</b> : organe musculaire en poire inversée, trois parties (fundus, corps, col) et trois couches (endomètre remanié par les hormones, myomètre musculaire lisse, périmétrium séreux). Lieu de la nidation et de la gestation.",
-        "<b>Vagin</b> : conduit musculo-membraneux extensible d'environ 10 cm reliant l'utérus à la vulve, voie du coït, de l'accouchement et de l'écoulement menstruel."
-      ]},
-      {h:"Organes externes — la vulve",l:[
-        "<b>Mont du pubis</b> : tissu adipeux sus-pubien.",
-        "<b>Grandes et petites lèvres</b> : replis cutanés protecteurs.",
-        "<b>Clitoris</b> : organe érectile richement innervé.",
-        "<b>Vestibule vulvaire</b> : contient l'orifice urinaire et l'orifice vaginal.",
-        "<b>Glandes de Bartholin</b> : assurent la lubrification."
-      ]}
-    ],note:"La régulation de l'ensemble repose sur l'axe hypothalamo-hypophyso-gonadique, via la GnRH puis la FSH et la LH."},
-
-    {id:"f-an-14",m:"anat",ch:"Système endocrinien",t:"Glandes endocrines",prem:true,s:[
-      {h:"Axe hypothalamo-hypophysaire",l:[
-        "<b>Hypothalamus</b> : GnRH (FSH/LH), TRH (TSH), CRH (ACTH), GHRH (GH), dopamine (inhibe la prolactine).",
-        "<b>Adénohypophyse</b> : TSH, ACTH, FSH/LH, GH, prolactine.",
-        "<b>Neurohypophyse</b> : libère l'ADH et l'ocytocine synthétisées par l'hypothalamus."
-      ]},
-      {h:"Thyroïde et parathyroïdes",l:[
-        "Thyroïde en C5-T1, follicules remplis de colloïde à thyroglobuline, synthèse de T3 et T4 sous contrôle de la TSH.",
-        "Effets : ↑ métabolisme basal, développement cérébral, sensibilisation aux catécholamines.",
-        "Cellules parafolliculaires C : calcitonine, hypocalcémiante.",
-        "Parathyroïdes (4 en général) : PTH, hypercalcémiante par résorption osseuse, réabsorption rénale et activation de la vitamine D."
-      ]},
-      {h:"Surrénales",l:[
-        "<b>Zone glomérulée</b> : aldostérone, ↑ réabsorption de Na⁺ et d'eau, ↓ K⁺.",
-        "<b>Zone fasciculée</b> : cortisol, anti-inflammatoire et hyperglycémiant.",
-        "<b>Zone réticulée</b> : androgènes (DHEA).",
-        "<b>Médullosurrénale</b> : adrénaline (80 %) et noradrénaline (20 %), sous contrôle sympathique."
-      ]},
-      {h:"Pancréas endocrine et gonades",l:[
-        "Îlots de Langerhans : cellules α (glucagon, hyperglycémiant), β (insuline, hypoglycémiant), δ (somatostatine), PP.",
-        "Testicules : cellules de Leydig → testostérone, régulation par la LH.",
-        "Ovaires : follicule → œstrogènes, corps jaune → progestérone, régulation par FSH et LH."
-      ]}
-    ]},
-
-    {id:"f-an-15",m:"anat",ch:"Système tégumentaire",t:"La peau et ses annexes",prem:false,s:[
-      {h:"Trois couches",l:[
-        "<b>Épiderme</b> : épithélium stratifié kératinisé, sans vaisseaux, renouvelé en 28 jours. Couches basale, épineuse, granuleuse, claire (peau épaisse) et cornée.",
-        "Cellules : kératinocytes, mélanocytes (mélanine, protection UV), cellules de Langerhans (immunité), cellules de Merkel (mécanorécepteurs).",
-        "<b>Derme</b> : papillaire (capillaires, terminaisons nerveuses) et réticulaire (collagène, glandes, follicules).",
-        "<b>Hypoderme</b> : tissu adipeux, réserve d'énergie et isolation."
-      ]},
-      {h:"Glandes",l:[
-        "<b>Sudoripares écrines</b> : partout, sueur aqueuse hypotonique, thermorégulation, contrôle sympathique cholinergique.",
-        "<b>Sudoripares apocrines</b> : axillaires, aréolaires, génitales ; sécrétion visqueuse dans le canal pilaire, actives à la puberté.",
-        "<b>Sébacées</b> : holocrines, sébum lipidique, barrière hydrophobe et action antibactérienne, stimulées par les androgènes."
-      ]},
-      {h:"Poils et ongles",l:[
-        "Follicule pileux : bulbe avec papille dermique et matrice germinative, muscle arrecteur.",
-        "Cycle pilaire : anagène (croissance), catagène (régression), télogène (repos puis chute).",
-        "Ongle : racine, matrice unguéale germinative, lunule, lit, cuticule (éponychium), hyponychium."
-      ]}
-    ]},
-
-    /* ---------------- BIOLOGIE CELLULAIRE ---------------- */
-    {id:"f-ce-01",m:"cell",ch:"Fondamentaux",t:"Procaryotes et eucaryotes",prem:false,s:[
-      {h:"Procaryotes",l:[
-        "Pas de noyau : ADN circulaire dans un nucléoïde, souvent accompagné de plasmides.",
-        "Ribosomes 70S (sous-unités 30S et 50S), cible de nombreux antibiotiques.",
-        "Paroi de peptidoglycane : Gram positif (paroi épaisse, violet au Gram) ou Gram négatif (paroi fine + membrane externe à LPS, rose).",
-        "Division par scissiparité, pas d'organites membranaires."
-      ]},
-      {h:"Eucaryotes",l:[
-        "Noyau délimité par une enveloppe à double membrane percée de pores nucléaires.",
-        "Ribosomes 80S (40S + 60S), compartimentation par organites.",
-        "Cytosquelette développé, division par mitose ou méiose.",
-        "Cellule végétale : paroi de cellulose, chloroplastes, grande vacuole."
-      ]},
-      {h:"Théorie endosymbiotique",l:[
-        "Mitochondries et chloroplastes dérivent de bactéries endocytées.",
-        "Arguments : double membrane, ADN circulaire propre, ribosomes 70S, division autonome."
-      ]}
-    ]},
-
-    {id:"f-ce-02",m:"cell",ch:"Membranes",t:"Membrane plasmique et transport",prem:false,s:[
-      {h:"Mosaïque fluide",l:[
-        "Bicouche de phospholipides amphiphiles : têtes hydrophiles vers l'extérieur, queues hydrophobes au centre.",
-        "Cholestérol : module la fluidité, tampon thermique.",
-        "Protéines intrinsèques (transmembranaires) et extrinsèques (périphériques).",
-        "Glycocalyx : glucides de surface, reconnaissance cellulaire et groupes sanguins."
-      ]},
-      {h:"Transports passifs",l:[
-        "<b>Diffusion simple</b> : gaz et petites molécules apolaires, dans le sens du gradient, sans énergie.",
-        "<b>Diffusion facilitée</b> : via une perméase ou un canal, saturable, sans ATP.",
-        "<b>Osmose</b> : diffusion de l'eau, facilitée par les aquaporines."
-      ]},
-      {h:"Transports actifs",l:[
-        "<b>Actif primaire</b> : hydrolyse directe d'ATP, ex. pompe Na⁺/K⁺ ATPase (3 Na⁺ sortent, 2 K⁺ entrent).",
-        "<b>Actif secondaire</b> : utilise un gradient préétabli, symport (SGLT1 glucose/Na⁺) ou antiport.",
-        "<b>Endocytose</b> : phagocytose, pinocytose, endocytose médiée par récepteur (clathrine). <b>Exocytose</b> pour la sécrétion."
-      ]}
-    ],note:"La pompe Na⁺/K⁺ consomme à elle seule une part majeure de l'ATP cellulaire et entretient le potentiel de repos."},
-
-    {id:"f-ce-03",m:"cell",ch:"Organites",t:"Les organites et le trafic vésiculaire",prem:false,s:[
-      {h:"Noyau",l:[
-        "Enveloppe à double membrane continue avec le réticulum endoplasmique, pores nucléaires.",
-        "Nucléole : synthèse des ARN ribosomiques et assemblage des ribosomes.",
-        "Chromatine : euchromatine active, hétérochromatine condensée et silencieuse."
-      ]},
-      {h:"Système endomembranaire",l:[
-        "<b>REG</b> (rugueux) : ribosomes en surface, synthèse et repliement des protéines destinées à l'export ou aux membranes.",
-        "<b>REL</b> (lisse) : synthèse des lipides et des stéroïdes, détoxification, stock de calcium.",
-        "<b>Golgi</b> : maturation, glycosylation, tri et adressage ; face <i>cis</i> de réception, face <i>trans</i> d'expédition.",
-        "<b>Lysosomes</b> : hydrolases acides à pH 5, digestion intracellulaire.",
-        "<b>Peroxysomes</b> : β-oxydation des acides gras à très longue chaîne, catalase contre le H₂O₂."
-      ]},
-      {h:"Mitochondrie",l:[
-        "Double membrane, crêtes de la membrane interne, matrice avec ADN mitochondrial et ribosomes 70S.",
-        "Cycle de Krebs dans la matrice, chaîne respiratoire et ATP synthase sur la membrane interne.",
-        "Transmission strictement maternelle chez l'humain."
-      ]},
-      {h:"Cytosquelette",l:[
-        "<b>Microfilaments d'actine</b> (7 nm) : forme, mouvements, cytodiérèse.",
-        "<b>Filaments intermédiaires</b> (10 nm) : résistance mécanique (kératine, vimentine, lamines).",
-        "<b>Microtubules</b> (25 nm) : tubuline α/β, fuseau mitotique, transport par kinésine (vers +) et dynéine (vers −), cils et flagelles en 9+2."
-      ]}
-    ]},
-
-    {id:"f-ce-04",m:"cell",ch:"Métabolisme",t:"Respiration cellulaire",prem:true,s:[
-      {h:"Glycolyse — cytosol",l:[
-        "1 glucose → 2 pyruvates, bilan net 2 ATP et 2 NADH.",
-        "Enzymes clés régulatrices : hexokinase, phosphofructokinase-1, pyruvate kinase.",
-        "Voie anaérobie : le pyruvate est réduit en lactate par la LDH pour régénérer le NAD⁺."
-      ]},
-      {h:"Décarboxylation et cycle de Krebs",l:[
-        "Pyruvate déshydrogénase : pyruvate → acétyl-CoA + CO₂ + NADH.",
-        "Un tour de cycle : 3 NADH, 1 FADH₂, 1 GTP, 2 CO₂ ; deux tours par glucose."
-      ]},
-      {h:"Chaîne respiratoire",l:[
-        "Complexes I à IV sur la membrane interne, transporteurs mobiles : ubiquinone et cytochrome c.",
-        "Accepteur final d'électrons : l'oxygène, réduit en eau.",
-        "Le gradient de protons alimente l'ATP synthase (complexe V) : théorie chimiosmotique de Mitchell.",
-        "Bilan complet : environ 30 à 32 ATP par glucose."
-      ]}
-    ],note:"Le cyanure bloque le complexe IV, le 2,4-dinitrophénol découple le gradient : la respiration continue mais l'ATP n'est plus produit."},
-
-    {id:"f-ce-05",m:"cell",ch:"Cycle cellulaire",t:"Cycle cellulaire et mitose",prem:true,s:[
-      {h:"Les phases",l:[
-        "<b>Interphase</b> : G1 (croissance), S (réplication de l'ADN), G2 (préparation) — environ 90 % du cycle.",
-        "<b>G0</b> : état quiescent, sortie réversible ou définitive du cycle.",
-        "<b>Mitose</b> : prophase, prométaphase, métaphase, anaphase, télophase, puis cytodiérèse."
-      ]},
-      {h:"Déroulement de la mitose",l:[
-        "<b>Prophase</b> : condensation des chromosomes, formation du fuseau, disparition du nucléole.",
-        "<b>Métaphase</b> : alignement des chromosomes sur la plaque équatoriale.",
-        "<b>Anaphase</b> : séparation des chromatides sœurs vers les pôles.",
-        "<b>Télophase</b> : décondensation, reconstitution des enveloppes nucléaires."
-      ]},
-      {h:"Contrôle",l:[
-        "Complexes cycline–CDK, points de contrôle G1/S, G2/M et du fuseau.",
-        "p53, gardien du génome : arrêt du cycle ou apoptose en cas de lésion de l'ADN.",
-        "Oncogènes (gain de fonction) et gènes suppresseurs de tumeurs (perte de fonction)."
-      ]},
-      {h:"Méiose",l:[
-        "Deux divisions successives, une seule réplication : 1 cellule diploïde → 4 cellules haploïdes.",
-        "Brassage <b>intra</b>chromosomique : crossing-over en prophase I. Brassage <b>inter</b>chromosomique : ségrégation aléatoire en anaphase I.",
-        "Non-disjonction → aneuploïdie (trisomie 21, monosomie X)."
-      ]}
-    ]},
-
-    {id:"f-ce-06",m:"cell",ch:"Communication",t:"Signalisation et jonctions",prem:true,s:[
-      {h:"Modes de communication",l:[
-        "Endocrine (hormone dans le sang), paracrine (cellules voisines), autocrine (sur elle-même), synaptique, juxtacrine (contact).",
-      ]},
-      {h:"Récepteurs",l:[
-        "<b>Canaux ioniques ligand-dépendants</b> : réponse en millisecondes (récepteur nicotinique).",
-        "<b>Récepteurs couplés aux protéines G</b> (RCPG) : 7 domaines transmembranaires, seconds messagers AMPc, IP₃, DAG, Ca²⁺.",
-        "<b>Récepteurs à activité enzymatique</b> : tyrosine kinase (insuline, facteurs de croissance), autophosphorylation.",
-        "<b>Récepteurs nucléaires</b> : ligands lipophiles (stéroïdes, hormones thyroïdiennes), action transcriptionnelle lente."
-      ]},
-      {h:"Jonctions cellulaires",l:[
-        "<b>Serrées</b> (occludens) : étanchéité, claudines et occludines.",
-        "<b>Adhérentes</b> et <b>desmosomes</b> : cadhérines, ancrage mécanique.",
-        "<b>Hémidesmosomes</b> : intégrines, ancrage à la lame basale.",
-        "<b>Gap</b> (communicantes) : connexines, passage direct d'ions et de petites molécules."
-      ]},
-      {h:"Apoptose",l:[
-        "Mort programmée : condensation, fragmentation de l'ADN, corps apoptotiques, pas d'inflammation.",
-        "Voie intrinsèque mitochondriale (cytochrome c, Bcl-2/Bax) et voie extrinsèque (récepteurs de mort, Fas).",
-        "Exécution par les caspases. À l'opposé, la nécrose est accidentelle et inflammatoire."
-      ]}
-    ]},
-
-    /* ---------------- BIOLOGIE MOLÉCULAIRE ---------------- */
-    {id:"f-mo-01",m:"mol",ch:"Acides nucléiques",t:"Structure de l'ADN et de l'ARN",prem:false,s:[
-      {h:"Le nucléotide",l:[
-        "Trois composants : un sucre (désoxyribose ou ribose), un groupement phosphate, une base azotée.",
-        "<b>Purines</b> : adénine et guanine (deux cycles). <b>Pyrimidines</b> : cytosine, thymine (ADN), uracile (ARN).",
-        "Liaison phosphodiester 3'→5' entre nucléotides ; la synthèse se fait toujours dans le sens 5'→3'."
-      ]},
-      {h:"La double hélice",l:[
-        "Modèle de Watson et Crick (1953), à partir des clichés de diffraction de Rosalind Franklin.",
-        "Deux brins antiparallèles, hélice droite, un tour tous les 10,5 paires de bases.",
-        "Appariement : <b>A=T</b> par 2 liaisons hydrogène, <b>G≡C</b> par 3 → un ADN riche en GC est plus stable et fond à plus haute température.",
-        "Règles de Chargaff : %A = %T et %G = %C."
-      ]},
-      {h:"Compaction",l:[
-        "ADN + histones (H2A, H2B, H3, H4) → nucléosome de 147 pb, relié par H1.",
-        "Fibre de 30 nm, boucles, chromatine, chromosome métaphasique.",
-        "Modifications épigénétiques : acétylation des histones (activation), méthylation des îlots CpG (répression)."
-      ]},
-      {h:"Les ARN",l:[
-        "<b>ARNm</b> : messager, copie codante. <b>ARNt</b> : adaptateur en trèfle avec anticodon. <b>ARNr</b> : structural et catalytique du ribosome.",
-        "ARN régulateurs : miARN, siARN, ARN long non codants."
-      ]}
-    ]},
-
-    {id:"f-mo-02",m:"mol",ch:"Réplication",t:"Réplication de l'ADN",prem:false,s:[
-      {h:"Principes",l:[
-        "Réplication <b>semi-conservative</b> : chaque nouvelle molécule garde un brin parental (Meselson et Stahl, 1958).",
-        "Bidirectionnelle à partir d'origines de réplication ; une seule chez les bactéries, des milliers chez les eucaryotes.",
-        "Se déroule en phase S du cycle cellulaire."
-      ]},
-      {h:"Les acteurs",l:[
-        "<b>Hélicase</b> : ouvre la double hélice. <b>Topo-isomérase / gyrase</b> : relâche les supertours en amont.",
-        "<b>Protéines SSB</b> : stabilisent l'ADN simple brin.",
-        "<b>Primase</b> : pose une amorce d'ARN, indispensable car les polymérases ne savent pas initier.",
-        "<b>ADN polymérase III</b> (procaryote) : élongation 5'→3', activité correctrice 3'→5'.",
-        "<b>ADN polymérase I</b> : retire les amorces. <b>Ligase</b> : soude les fragments."
-      ]},
-      {h:"Brin direct et brin retardé",l:[
-        "Brin <b>précoce</b> (direct) : synthèse continue dans le sens de la fourche.",
-        "Brin <b>tardif</b> (retardé) : synthèse discontinue en <b>fragments d'Okazaki</b>.",
-        "Extrémités des chromosomes : télomères raccourcis à chaque cycle, entretenus par la télomérase dans les cellules souches et tumorales."
-      ]}
-    ],note:"Le taux d'erreur final est d'environ 1 pour 10⁹ bases grâce à la relecture polymérasique et à la réparation des mésappariements."},
-
-    {id:"f-mo-03",m:"mol",ch:"Expression",t:"Transcription et maturation",prem:false,s:[
-      {h:"Transcription",l:[
-        "Copie d'un brin d'ADN (brin matrice, non codant) en ARN, dans le sens 5'→3'.",
-        "Chez les procaryotes : une seule ARN polymérase, reconnaissance du promoteur par le facteur σ.",
-        "Chez les eucaryotes : <b>ARN pol I</b> (ARNr), <b>pol II</b> (ARNm), <b>pol III</b> (ARNt et 5S). Boîte TATA et facteurs de transcription généraux."
-      ]},
-      {h:"Maturation de l'ARN pré-messager",l:[
-        "<b>Coiffe</b> 7-méthylguanosine en 5' : protection et reconnaissance par le ribosome.",
-        "<b>Queue poly-A</b> en 3' : stabilité et export nucléaire.",
-        "<b>Épissage</b> : élimination des introns, conservation des exons, par le spliceosome (snRNP).",
-        "<b>Épissage alternatif</b> : plusieurs protéines à partir d'un même gène."
-      ]},
-      {h:"Régulation",l:[
-        "Procaryotes : opérons. L'<b>opéron lactose</b> est inductible (le lactose lève la répression), l'<b>opéron tryptophane</b> est répressible.",
-        "Eucaryotes : promoteurs, enhancers, silencers, facteurs de transcription, remodelage de la chromatine.",
-        "Régulation post-transcriptionnelle par les miARN et la stabilité de l'ARNm."
-      ]}
-    ]},
-
-    {id:"f-mo-04",m:"mol",ch:"Expression",t:"Traduction et code génétique",prem:true,s:[
-      {h:"Le code génétique",l:[
-        "Lecture par <b>codons</b> de trois nucléotides : 64 combinaisons pour 20 acides aminés.",
-        "<b>Redondant</b> (plusieurs codons par acide aminé) mais <b>non ambigu</b> (un codon = un seul acide aminé).",
-        "Quasi <b>universel</b>, non chevauchant, sans ponctuation.",
-        "Codon initiateur <b>AUG</b> (méthionine) ; codons stop <b>UAA</b>, <b>UAG</b>, <b>UGA</b>."
-      ]},
-      {h:"Étapes de la traduction",l:[
-        "<b>Initiation</b> : petite sous-unité + ARNm + ARNt initiateur, puis recrutement de la grande sous-unité.",
-        "<b>Élongation</b> : site A (arrivée de l'aminoacyl-ARNt), site P (peptidyl), site E (sortie). La liaison peptidique est catalysée par l'ARNr, un ribozyme.",
-        "<b>Terminaison</b> : un codon stop est reconnu par un facteur de libération.",
-        "Polysome : plusieurs ribosomes traduisent simultanément le même ARNm."
-      ]},
-      {h:"Après la traduction",l:[
-        "Repliement assisté par les chaperons (HSP).",
-        "Modifications post-traductionnelles : clivage, glycosylation, phosphorylation, acétylation.",
-        "Adressage par peptide signal vers le RE, les mitochondries ou le noyau ; dégradation par le protéasome après ubiquitinylation."
-      ]}
-    ],note:"Antibiotiques et traduction : les tétracyclines bloquent le site A, les macrolides le tunnel de sortie, les aminosides provoquent des erreurs de lecture."},
-
-    {id:"f-mo-05",m:"mol",ch:"Génome",t:"Mutations et réparation",prem:true,s:[
-      {h:"Types de mutations",l:[
-        "<b>Substitution</b> : silencieuse (même acide aminé), faux-sens (acide aminé différent), non-sens (codon stop prématuré).",
-        "<b>Insertion / délétion</b> : décalage du cadre de lecture si le nombre de bases n'est pas un multiple de 3.",
-        "Mutations dynamiques : expansion de triplets (Huntington, X fragile).",
-        "Germinales (transmissibles) ou somatiques (non transmissibles, base de l'oncogenèse)."
-      ]},
-      {h:"Agents mutagènes",l:[
-        "Physiques : UV (dimères de thymine), rayonnements ionisants (cassures double brin).",
-        "Chimiques : agents alkylants, intercalants, analogues de bases.",
-        "Biologiques : virus, transposons."
-      ]},
-      {h:"Systèmes de réparation",l:[
-        "<b>Relecture</b> par l'ADN polymérase pendant la synthèse.",
-        "<b>Réparation des mésappariements</b> (MMR) : défaut → syndrome de Lynch.",
-        "<b>Excision de bases</b> (BER) et <b>excision de nucléotides</b> (NER) : défaut de NER → xeroderma pigmentosum.",
-        "Cassures double brin : recombinaison homologue (fidèle, BRCA1/2) ou jonction d'extrémités non homologues (NHEJ, plus risquée)."
-      ]}
-    ]},
-
-    {id:"f-mo-06",m:"mol",ch:"Techniques",t:"PCR, électrophorèse et séquençage",prem:true,s:[
-      {h:"PCR",l:[
-        "Amplification exponentielle d'une séquence cible : 2ⁿ copies après n cycles.",
-        "Trois étapes par cycle : <b>dénaturation</b> (95 °C), <b>hybridation</b> des amorces (50-65 °C), <b>élongation</b> (72 °C).",
-        "Taq polymérase thermostable, issue de <i>Thermus aquaticus</i>.",
-        "Variantes : RT-PCR (à partir d'ARN, via la transcriptase inverse), PCR quantitative en temps réel (Ct, SYBR Green ou sondes TaqMan), PCR digitale."
-      ]},
-      {h:"Électrophorèse",l:[
-        "Migration de l'ADN, chargé négativement, de la cathode vers l'anode.",
-        "Les petits fragments migrent le plus vite ; taille estimée par comparaison à un marqueur.",
-        "Gel d'agarose pour l'ADN, SDS-PAGE pour les protéines (dénaturation et charge uniformisée par le SDS)."
-      ]},
-      {h:"Séquençage et transferts",l:[
-        "<b>Sanger</b> : didésoxynucléotides terminateurs, lecture par électrophorèse capillaire, référence pour la validation.",
-        "<b>NGS</b> : séquençage massif en parallèle, exome ou génome complet.",
-        "<b>Southern</b> = ADN, <b>Northern</b> = ARN, <b>Western</b> = protéines.",
-        "<b>CRISPR-Cas9</b> : ARN guide + nucléase Cas9, coupure ciblée puis réparation NHEJ ou HDR."
-      ]}
-    ],note:"Contrôles indispensables en PCR : témoin négatif (contamination) et témoin positif (bon déroulement de la réaction)."},
-
-    {id:"f-mo-07",m:"mol",ch:"Techniques",t:"Enzymes et outils du génie génétique",prem:true,s:[
-      {h:"Enzymes de restriction",l:[
-        "Endonucléases bactériennes reconnaissant des sites palindromiques de 4 à 8 pb.",
-        "Coupure à extrémités <b>cohésives</b> (EcoRI) ou <b>franches</b> (SmaI).",
-        "Rôle naturel : défense contre les bactériophages, avec protection par méthylation de l'ADN bactérien."
-      ]},
-      {h:"Clonage",l:[
-        "Vecteur (plasmide, phage, BAC) + insert liés par la <b>ADN ligase</b>.",
-        "Éléments d'un plasmide : origine de réplication, gène de résistance pour la sélection, site de clonage multiple.",
-        "Transformation bactérienne, sélection sur milieu additionné d'antibiotique, criblage blanc/bleu (LacZ)."
-      ]},
-      {h:"Autres outils",l:[
-        "<b>Transcriptase inverse</b> : ARN → ADNc, sans introns.",
-        "<b>Phosphatase alcaline</b> : évite la recircularisation du vecteur.",
-        "<b>Puces à ADN</b> et <b>RNA-seq</b> : profils d'expression à grande échelle."
-      ]}
-    ]}
-  ],
-
-  questions:[
-    /* ---------------- ANATOMIE ---------------- */
-    {id:"q-an-01",m:"anat",ch:"Locomoteur",q:"Quel os du crâne porte la selle turcique où se loge l'hypophyse ?",o:["L'os frontal","Le sphénoïde","L'ethmoïde","L'os occipital"],r:1,e:"Le sphénoïde, en forme de papillon, relie plusieurs os du crâne et porte la selle turcique."},
-    {id:"q-an-02",m:"anat",ch:"Locomoteur",q:"Par quel orifice la moelle épinière rejoint-elle l'encéphale ?",o:["Le foramen magnum","Le foramen vertébral","La crista galli","Le hiatus œsophagien"],r:0,e:"Le foramen magnum est creusé dans l'os occipital."},
-    {id:"q-an-03",m:"anat",ch:"Locomoteur",q:"Combien de vertèbres compte la colonne vertébrale de l'adulte ?",o:["24","26","31","33"],r:1,e:"26 os : 7 cervicales, 12 thoraciques, 5 lombaires, le sacrum et le coccyx."},
-    {id:"q-an-04",m:"anat",ch:"Locomoteur",q:"Quel élément du disque intervertébral amortit les chocs ?",o:["L'annulus fibrosus","Le ligament jaune","Le nucleus pulposus","Le processus épineux"],r:2,e:"Le nucleus pulposus est un centre gélatineux très hydraté ; l'annulus fibrosus résiste à la tension."},
-    {id:"q-an-05",m:"anat",ch:"Locomoteur",q:"Quelles côtes sont dites flottantes ?",o:["Les côtes 1 à 7","Les côtes 8 à 10","Les côtes 11 et 12","Les côtes 9 et 10"],r:2,e:"Les côtes 11 et 12 n'ont aucune attache sternale, même indirecte."},
-    {id:"q-an-06",m:"anat",ch:"Locomoteur",q:"Quel nerf innerve le diaphragme ?",o:["Le nerf vague","Le nerf phrénique","Le nerf intercostal","Le nerf accessoire"],r:1,e:"Le nerf phrénique naît du plexus cervical (racines C3-C5)."},
-    {id:"q-an-07",m:"anat",ch:"Locomoteur",q:"Quels os composent l'os coxal ?",o:["Ilion, ischion et pubis","Sacrum, coccyx et ilion","Fémur, ischion et pubis","Ilion, sacrum et pubis"],r:0,e:"Trois pièces soudées à l'âge adulte : ilion, ischion et pubis."},
-    {id:"q-an-08",m:"anat",ch:"Locomoteur",q:"Quelle enveloppe conjonctive entoure chaque fibre musculaire individuellement ?",o:["L'épimysium","Le périmysium","L'endomysium","Le sarcolemme"],r:2,e:"L'endomysium entoure chaque fibre et contient capillaires et nerfs. Le sarcolemme est la membrane plasmique de la fibre."},
-    {id:"q-an-09",m:"anat",ch:"Locomoteur",q:"Quelle bande du sarcomère contient uniquement des filaments fins ?",o:["La bande A","La bande I","La zone H","La ligne M"],r:1,e:"Bande I = filaments fins seuls ; zone H = filaments épais seuls ; bande A = les deux superposés."},
-    {id:"q-an-10",m:"anat",ch:"Locomoteur",q:"Que forme une triade dans la fibre musculaire ?",o:["3 myofibrilles accolées","1 tubule T + 2 citernes terminales","3 sarcomères consécutifs","1 motoneurone + 2 fibres"],r:1,e:"La triade associe un tubule T à deux citernes terminales du réticulum sarcoplasmique."},
-    {id:"q-an-11",m:"anat",ch:"Locomoteur",q:"Quel neurotransmetteur est libéré à la plaque motrice ?",o:["La noradrénaline","La dopamine","L'acétylcholine","Le glutamate"],r:2,e:"L'acétylcholine dépolarise le sarcolemme et déclenche la contraction."},
-    {id:"q-an-12",m:"anat",ch:"Nerveux",q:"Où se situe l'aire de Broca ?",o:["Lobe frontal","Lobe temporal","Lobe pariétal","Lobe occipital"],r:0,e:"Aire de Broca (44-45), lobe frontal, contrôle moteur de la parole. L'aire de Wernicke est temporale."},
-    {id:"q-an-13",m:"anat",ch:"Nerveux",q:"Quelle structure du lobe temporal est centrale pour la mémoire ?",o:["L'amygdale","L'hippocampe","Le thalamus","Le vermis"],r:1,e:"L'hippocampe assure la consolidation mnésique ; l'amygdale traite les émotions."},
-    {id:"q-an-14",m:"anat",ch:"Nerveux",q:"Quel lobe du cervelet gère l'équilibre et les mouvements oculaires ?",o:["Le lobe antérieur","Le lobe postérieur","Le lobe flocculo-nodulaire","Le vermis"],r:2,e:"Le lobe flocculo-nodulaire reçoit les afférences vestibulaires."},
-    {id:"q-an-15",m:"anat",ch:"Nerveux",q:"À quel niveau vertébral se termine la moelle épinière chez l'adulte ?",o:["T10-T11","L1-L2","L4-L5","S1-S2"],r:1,e:"Le cône médullaire se situe en L1-L2 ; au-delà, la queue de cheval."},
-    {id:"q-an-16",m:"anat",ch:"Nerveux",q:"Combien de paires de nerfs spinaux quittent la moelle ?",o:["12","26","31","33"],r:2,e:"31 paires : 8 cervicales, 12 thoraciques, 5 lombaires, 5 sacrées et 1 coccygienne."},
-    {id:"q-an-17",m:"anat",ch:"Nerveux",q:"La racine dorsale d'un nerf spinal est :",o:["Motrice","Sensitive","Mixte","Végétative"],r:1,e:"La racine dorsale est sensitive et porte le ganglion spinal ; la racine ventrale est motrice."},
-    {id:"q-an-18",m:"anat",ch:"Nerveux",q:"Quel nerf crânien assure les fonctions parasympathiques du thorax et de l'abdomen ?",o:["Le nerf VII","Le nerf IX","Le nerf X","Le nerf XI"],r:2,e:"Le nerf vague (X) innerve cœur, poumons et tube digestif jusqu'au côlon transverse."},
-    {id:"q-an-19",m:"anat",ch:"Nerveux",q:"Quelle est l'origine anatomique du système sympathique ?",o:["Crânio-sacrée","Thoraco-lombaire (T1-L2)","Cervicale uniquement","Sacrée S2-S4"],r:1,e:"Sympathique = thoraco-lombaire ; parasympathique = crânio-sacré."},
-    {id:"q-an-20",m:"anat",ch:"Nerveux",q:"Quel neurotransmetteur libère le neurone postganglionnaire sympathique (hors glandes sudoripares) ?",o:["L'acétylcholine","La noradrénaline","La sérotonine","Le GABA"],r:1,e:"Noradrénaline sur récepteurs α et β. Exception notable : les glandes sudoripares, cholinergiques."},
-    {id:"q-an-21",m:"anat",ch:"Cardio-vasculaire",q:"Quelle valvule sépare l'oreillette gauche du ventricule gauche ?",o:["La tricuspide","La mitrale","L'aortique","La pulmonaire"],r:1,e:"La mitrale, ou bicuspide, possède deux cuspides."},
-    {id:"q-an-22",m:"anat",ch:"Cardio-vasculaire",q:"D'où naissent les artères coronaires ?",o:["Du tronc pulmonaire","Des sinus aortiques","De la crosse aortique","Du sinus coronaire"],r:1,e:"Elles naissent des sinus aortiques, à la base de la valve aortique."},
-    {id:"q-an-23",m:"anat",ch:"Cardio-vasculaire",q:"Combien de veines pulmonaires se jettent dans l'oreillette gauche ?",o:["Deux","Trois","Quatre","Six"],r:2,e:"Quatre veines pulmonaires ramènent le sang oxygéné."},
-    {id:"q-an-24",m:"anat",ch:"Cardio-vasculaire",q:"Quelle tunique artérielle est la plus épaisse et contient le muscle lisse ?",o:["L'intima","La média","L'adventice","La lame basale"],r:1,e:"La média, riche en muscle lisse et en fibres élastiques, encaisse la pression artérielle."},
-    {id:"q-an-25",m:"anat",ch:"Cardio-vasculaire",q:"Quel type de capillaire trouve-t-on dans le foie et la moelle osseuse ?",o:["Continu","Fenestré","Discontinu (sinusoïde)","Lymphatique"],r:2,e:"Les sinusoïdes ont une paroi discontinue autorisant le passage de cellules entières."},
-    {id:"q-an-26",m:"anat",ch:"Respiratoire",q:"Pourquoi les corps étrangers inhalés vont-ils plus souvent à droite ?",o:["La bronche droite est plus longue","La bronche droite est plus verticale et plus large","Le poumon droit n'a que 2 lobes","La trachée dévie à gauche"],r:1,e:"La bronche principale droite est courte, large et presque verticale."},
-    {id:"q-an-27",m:"anat",ch:"Respiratoire",q:"Quelle cellule alvéolaire produit le surfactant ?",o:["Le pneumocyte de type I","Le pneumocyte de type II","Le macrophage alvéolaire","La cellule caliciforme"],r:1,e:"Le pneumocyte II réduit la tension de surface et évite le collapsus alvéolaire."},
-    {id:"q-an-28",m:"anat",ch:"Respiratoire",q:"Combien de lobes compte le poumon gauche ?",o:["Un","Deux","Trois","Quatre"],r:1,e:"Deux lobes seulement, pour laisser la place au cœur ; la lingula correspond au lobe moyen droit."},
-    {id:"q-an-29",m:"anat",ch:"Respiratoire",q:"Quelle plèvre est sensible à la douleur ?",o:["La plèvre viscérale","La plèvre pariétale","Les deux","Aucune"],r:1,e:"La pariétale est innervée par les nerfs intercostaux et le phrénique ; la viscérale est insensible."},
-    {id:"q-an-30",m:"anat",ch:"Digestif",q:"Quelles cellules gastriques sécrètent le facteur intrinsèque ?",o:["Les cellules principales","Les cellules pariétales","Les cellules muqueuses","Les cellules G"],r:1,e:"Les cellules pariétales produisent HCl et le facteur intrinsèque, indispensable à l'absorption de la vitamine B12."},
-    {id:"q-an-31",m:"anat",ch:"Digestif",q:"Où la vitamine B12 est-elle absorbée ?",o:["Dans le duodénum","Dans le jéjunum","Dans l'iléon","Dans le côlon"],r:2,e:"L'iléon terminal absorbe la vitamine B12 et les sels biliaires."},
-    {id:"q-an-32",m:"anat",ch:"Digestif",q:"À quel niveau l'œsophage traverse-t-il le diaphragme ?",o:["T8","T10","T12","L1"],r:1,e:"Hiatus œsophagien en T10 ; la veine cave inférieure passe en T8 et l'aorte en T12."},
-    {id:"q-an-33",m:"anat",ch:"Digestif",q:"Que forme l'union du canal cystique et du canal hépatique commun ?",o:["Le canal de Wirsung","Le canal cholédoque","L'ampoule de Vater","Le canal de Santorini"],r:1,e:"Le cholédoque rejoint ensuite le Wirsung au niveau de l'ampoule de Vater."},
-    {id:"q-an-34",m:"anat",ch:"Urinaire",q:"Quelle partie du néphron réalise la réabsorption la plus massive ?",o:["Le glomérule","Le tube contourné proximal","L'anse de Henle","Le tube collecteur"],r:1,e:"Le tube contourné proximal réabsorbe environ 65 % de l'eau et du sodium filtrés, et tout le glucose."},
-    {id:"q-an-35",m:"anat",ch:"Urinaire",q:"Sur quelle structure l'ADH agit-elle principalement ?",o:["Le tube contourné proximal","La branche descendante de Henle","Le tube collecteur","Le glomérule"],r:2,e:"L'ADH augmente la perméabilité à l'eau du tube collecteur via les aquaporines-2."},
-    {id:"q-an-36",m:"anat",ch:"Urinaire",q:"Quel muscle assure la contraction de la vessie lors de la miction ?",o:["Le détrusor","Le trigone","Le sphincter externe","Le muscle périnéal"],r:0,e:"Le détrusor se contracte sous contrôle parasympathique."},
-    {id:"q-an-37",m:"anat",ch:"Endocrinien",q:"Quelle hormone est hypocalcémiante ?",o:["La PTH","La calcitonine","Le cortisol","L'aldostérone"],r:1,e:"La calcitonine, sécrétée par les cellules parafolliculaires C, s'oppose à la PTH."},
-    {id:"q-an-38",m:"anat",ch:"Endocrinien",q:"Quelle zone du cortex surrénalien sécrète l'aldostérone ?",o:["La zone glomérulée","La zone fasciculée","La zone réticulée","La médullosurrénale"],r:0,e:"Glomérulée = minéralocorticoïdes, fasciculée = cortisol, réticulée = androgènes."},
-    {id:"q-an-39",m:"anat",ch:"Endocrinien",q:"Quelles hormones sont libérées par la neurohypophyse ?",o:["TSH et ACTH","GH et prolactine","ADH et ocytocine","FSH et LH"],r:2,e:"Elles sont synthétisées dans l'hypothalamus puis stockées et libérées par la neurohypophyse."},
-    {id:"q-an-40",m:"anat",ch:"Endocrinien",q:"Quelles cellules des îlots de Langerhans sécrètent l'insuline ?",o:["Les cellules α","Les cellules β","Les cellules δ","Les cellules PP"],r:1,e:"Cellules β = insuline (hypoglycémiante), cellules α = glucagon (hyperglycémiant)."},
-    {id:"q-an-41",m:"anat",ch:"Tégumentaire",q:"Quelle cellule épidermique produit la mélanine ?",o:["Le kératinocyte","Le mélanocyte","La cellule de Langerhans","La cellule de Merkel"],r:1,e:"Le mélanocyte, situé dans la couche basale, protège l'ADN des UV."},
-    {id:"q-an-42",m:"anat",ch:"Tégumentaire",q:"Quel type de glande sudoripare est actif dès la naissance et sert à la thermorégulation ?",o:["Écrine","Apocrine","Sébacée","Holocrine"],r:0,e:"Les glandes écrines débouchent directement à la surface ; les apocrines s'activent à la puberté."},
-    {id:"q-an-43",m:"anat",ch:"Tégumentaire",q:"Quelle phase du cycle pilaire correspond à la croissance active ?",o:["Anagène","Catagène","Télogène","Exogène"],r:0,e:"Anagène = croissance, catagène = régression, télogène = repos puis chute."},
-
-    /* ---------------- BIOLOGIE CELLULAIRE ---------------- */
-    {id:"q-an-44",m:"anat",ch:"Locomoteur",q:"À quelle catégorie appartiennent les sutures du crâne ?",o:["Articulations fibreuses","Articulations cartilagineuses","Articulations synoviales","Amphiarthroses"],r:0,e:"Sutures = articulations fibreuses, sans cavité articulaire, immobiles."},
-    {id:"q-an-45",m:"anat",ch:"Locomoteur",q:"Quelle articulation possède une cavité remplie de liquide synovial ?",o:["La synchondrose","La symphyse","L'articulation synoviale","La suture"],r:2,e:"Seules les synoviales ont une cavité articulaire ; ce sont les plus mobiles."},
-    {id:"q-an-46",m:"anat",ch:"Locomoteur",q:"Comment appelle-t-on le mouvement qui éloigne un membre du plan médian ?",o:["L'adduction","L'abduction","La flexion","La pronation"],r:1,e:"Abduction = éloignement, adduction = rapprochement. Moyen mnémotechnique : ad-duction, on ajoute au corps."},
-    {id:"q-an-47",m:"anat",ch:"Locomoteur",q:"La supination correspond à :",o:["La paume vers le bas","La paume vers le haut","La plante du pied vers l'intérieur","Une rotation de la tête"],r:1,e:"Supination = paume vers le haut, comme pour tenir de la soupe. Pronation = paume vers le bas."},
-    {id:"q-an-48",m:"anat",ch:"Digestif",q:"Quelle structure quitte le hile hépatique ?",o:["La veine porte","L'artère hépatique","Les voies biliaires","La veine cave"],r:2,e:"Au hile, la veine porte et l'artère hépatique entrent, les voies biliaires sortent."},
-    {id:"q-an-49",m:"anat",ch:"Digestif",q:"Quelle partie du pancréas est orientée vers la rate ?",o:["La tête","Le processus unciné","Le corps","La queue"],r:3,e:"La tête est dans le cadre duodénal, la queue pointe vers la rate."},
-    {id:"q-an-50",m:"anat",ch:"Génital",q:"Où se déroule habituellement la fécondation ?",o:["Dans l'ovaire","Dans l'ampoule de la trompe","Dans l'utérus","Dans le vagin"],r:1,e:"L'ovocyte capté par le pavillon est fécondé dans l'ampoule tubaire, puis migre vers l'utérus."},
-    {id:"q-an-51",m:"anat",ch:"Génital",q:"Quelle couche de l'utérus est remaniée par les hormones à chaque cycle ?",o:["Le myomètre","L'endomètre","Le périmétrium","Le col"],r:1,e:"L'endomètre s'épaissit puis desquame ; le myomètre est la couche musculaire lisse."},
-    {id:"q-an-52",m:"anat",ch:"Génital",q:"Quel liquide riche en fructose nourrit les spermatozoïdes ?",o:["La sécrétion prostatique","Le liquide des vésicules séminales","Le mucus des glandes de Cowper","Le liquide épididymaire"],r:1,e:"Les vésicules séminales sécrètent un liquide alcalin riche en fructose, principal carburant des spermatozoïdes."},
-    {id:"q-an-53",m:"anat",ch:"Génital",q:"Quel est le rôle de l'épididyme ?",o:["Produire la testostérone","Assurer la maturation et le stockage des spermatozoïdes","Sécréter le liquide séminal","Entourer l'urètre"],r:1,e:"L'épididyme coiffe la face postérieure du testicule et mûrit les spermatozoïdes avant leur émission."},
-
-    {id:"q-ce-01",m:"cell",ch:"Fondamentaux",q:"Quelle est la taille des ribosomes procaryotes ?",o:["70S (30S + 50S)","80S (40S + 60S)","60S (20S + 40S)","90S (30S + 60S)"],r:0,e:"70S chez les procaryotes, 80S chez les eucaryotes : c'est la base de la sélectivité de nombreux antibiotiques."},
-    {id:"q-ce-02",m:"cell",ch:"Fondamentaux",q:"Quel argument soutient la théorie endosymbiotique ?",o:["La mitochondrie possède un ADN circulaire propre","La mitochondrie est entourée d'une seule membrane","La mitochondrie ne se divise pas","La mitochondrie contient des ribosomes 80S"],r:0,e:"ADN circulaire, double membrane, ribosomes 70S et division autonome plaident pour une origine bactérienne."},
-    {id:"q-ce-03",m:"cell",ch:"Fondamentaux",q:"Qu'est-ce qui distingue une bactérie Gram négatif ?",o:["Une paroi de peptidoglycane très épaisse","Une membrane externe riche en LPS","L'absence totale de paroi","Un noyau vrai"],r:1,e:"Le Gram négatif a une paroi fine doublée d'une membrane externe à lipopolysaccharides et se colore en rose."},
-    {id:"q-ce-04",m:"cell",ch:"Membranes",q:"Quel rôle joue le cholestérol dans la membrane plasmique ?",o:["Il transporte activement le sodium","Il module la fluidité membranaire","Il synthétise les phospholipides","Il forme le glycocalyx"],r:1,e:"Le cholestérol agit en tampon : il rigidifie à haute température et fluidifie à basse température."},
-    {id:"q-ce-05",m:"cell",ch:"Membranes",q:"Quelle est la stœchiométrie de la pompe Na⁺/K⁺ ATPase ?",o:["2 Na⁺ sortent / 3 K⁺ entrent","3 Na⁺ sortent / 2 K⁺ entrent","1 Na⁺ / 1 K⁺","3 Na⁺ entrent / 3 K⁺ sortent"],r:1,e:"3 Na⁺ vers l'extérieur et 2 K⁺ vers l'intérieur par ATP hydrolysé : la pompe est électrogène."},
-    {id:"q-ce-06",m:"cell",ch:"Membranes",q:"La diffusion facilitée se caractérise par :",o:["Une consommation directe d'ATP","Un transport contre le gradient","Un passage par un transporteur, sans énergie","Une absence totale de spécificité"],r:2,e:"Elle suit le gradient mais nécessite un canal ou une perméase : elle est saturable et spécifique."},
-    {id:"q-ce-07",m:"cell",ch:"Membranes",q:"Quelles protéines forment les canaux à eau ?",o:["Les connexines","Les aquaporines","Les claudines","Les intégrines"],r:1,e:"Les aquaporines accélèrent considérablement l'osmose, notamment dans le tube collecteur rénal."},
-    {id:"q-ce-08",m:"cell",ch:"Organites",q:"Quelle est la fonction principale du nucléole ?",o:["Stocker le calcium","Assembler les ribosomes","Dégrader les protéines","Synthétiser les lipides"],r:1,e:"Le nucléole transcrit les ARNr et assemble les sous-unités ribosomiques."},
-    {id:"q-ce-09",m:"cell",ch:"Organites",q:"Quel organite assure la glycosylation terminale et le tri des protéines ?",o:["Le lysosome","L'appareil de Golgi","Le peroxysome","Le réticulum lisse"],r:1,e:"Le Golgi reçoit en face cis et expédie en face trans après maturation."},
-    {id:"q-ce-10",m:"cell",ch:"Organites",q:"À quel pH fonctionnent les hydrolases lysosomales ?",o:["pH 5, acide","pH 7,4, neutre","pH 9, basique","Indépendant du pH"],r:0,e:"Une pompe à protons maintient un pH acide d'environ 5 dans le lysosome."},
-    {id:"q-ce-11",m:"cell",ch:"Organites",q:"Quelle enzyme peroxysomale neutralise le peroxyde d'hydrogène ?",o:["La catalase","La lipase","La lysozyme","La protéase"],r:0,e:"La catalase transforme H₂O₂ en eau et en dioxygène."},
-    {id:"q-ce-12",m:"cell",ch:"Organites",q:"Quel moteur moléculaire transporte les vésicules vers l'extrémité + des microtubules ?",o:["La dynéine","La kinésine","La myosine","L'actine"],r:1,e:"Kinésine vers l'extrémité + (périphérie), dynéine vers l'extrémité − (centre)."},
-    {id:"q-ce-13",m:"cell",ch:"Métabolisme",q:"Quel est le bilan net en ATP de la glycolyse ?",o:["2 ATP","4 ATP","30 ATP","36 ATP"],r:0,e:"4 ATP produits moins 2 ATP investis, soit un gain net de 2 ATP, plus 2 NADH."},
-    {id:"q-ce-14",m:"cell",ch:"Métabolisme",q:"Où se déroule le cycle de Krebs ?",o:["Dans le cytosol","Dans la matrice mitochondriale","Sur la membrane interne","Dans l'espace intermembranaire"],r:1,e:"Le cycle de Krebs est matriciel ; la chaîne respiratoire est sur la membrane interne."},
-    {id:"q-ce-15",m:"cell",ch:"Métabolisme",q:"Quel est l'accepteur final d'électrons de la chaîne respiratoire ?",o:["Le NAD⁺","L'oxygène","Le cytochrome c","Le pyruvate"],r:1,e:"L'oxygène est réduit en eau au niveau du complexe IV."},
-    {id:"q-ce-16",m:"cell",ch:"Métabolisme",q:"En anaérobie, le pyruvate est converti en :",o:["Acétyl-CoA","Lactate","Citrate","Glucose"],r:1,e:"La LDH réduit le pyruvate en lactate pour régénérer le NAD⁺ nécessaire à la glycolyse."},
-    {id:"q-ce-17",m:"cell",ch:"Cycle cellulaire",q:"Pendant quelle phase l'ADN est-il répliqué ?",o:["G1","S","G2","M"],r:1,e:"La phase S de synthèse double la quantité d'ADN, chaque chromosome ayant alors deux chromatides."},
-    {id:"q-ce-18",m:"cell",ch:"Cycle cellulaire",q:"À quelle étape les chromatides sœurs se séparent-elles ?",o:["Prophase","Métaphase","Anaphase","Télophase"],r:2,e:"En anaphase, les chromatides migrent vers les pôles opposés."},
-    {id:"q-ce-19",m:"cell",ch:"Cycle cellulaire",q:"Quelle protéine est surnommée le gardien du génome ?",o:["p53","La cycline B","La kinésine","BRCA1"],r:0,e:"p53 bloque le cycle ou déclenche l'apoptose en cas de lésion de l'ADN."},
-    {id:"q-ce-20",m:"cell",ch:"Cycle cellulaire",q:"Quel brassage se produit lors du crossing-over ?",o:["Interchromosomique","Intrachromosomique","Aucun brassage","Réplicatif"],r:1,e:"Le crossing-over de prophase I échange des segments entre chromosomes homologues : brassage intrachromosomique."},
-    {id:"q-ce-21",m:"cell",ch:"Communication",q:"Combien de domaines transmembranaires possède un récepteur couplé aux protéines G ?",o:["1","4","7","12"],r:2,e:"Les RCPG possèdent sept hélices transmembranaires."},
-    {id:"q-ce-22",m:"cell",ch:"Communication",q:"Quelles protéines constituent les jonctions communicantes (gap) ?",o:["Les cadhérines","Les connexines","Les claudines","Les intégrines"],r:1,e:"Six connexines forment un connexon ; deux connexons face à face créent un canal intercellulaire."},
-    {id:"q-ce-23",m:"cell",ch:"Communication",q:"Quelle affirmation décrit l'apoptose ?",o:["Elle est accidentelle et inflammatoire","Elle est programmée et non inflammatoire","Elle provoque un gonflement cellulaire","Elle ne concerne que les cellules tumorales"],r:1,e:"L'apoptose est ordonnée : corps apoptotiques phagocytés, sans réaction inflammatoire, contrairement à la nécrose."},
-
-    /* ---------------- BIOLOGIE MOLÉCULAIRE ---------------- */
-    {id:"q-mo-01",m:"mol",ch:"Acides nucléiques",q:"Combien de liaisons hydrogène unissent guanine et cytosine ?",o:["Une","Deux","Trois","Quatre"],r:2,e:"G≡C par trois liaisons, A=T par deux : un ADN riche en GC est plus stable thermiquement."},
-    {id:"q-mo-02",m:"mol",ch:"Acides nucléiques",q:"Quelles bases sont des purines ?",o:["Adénine et guanine","Cytosine et thymine","Adénine et thymine","Guanine et cytosine"],r:0,e:"Purines : adénine et guanine, à deux cycles. Pyrimidines : cytosine, thymine et uracile."},
-    {id:"q-mo-03",m:"mol",ch:"Acides nucléiques",q:"Quelle base remplace la thymine dans l'ARN ?",o:["La cytosine","L'uracile","La guanine","L'adénine"],r:1,e:"L'ARN utilise l'uracile, qui s'apparie avec l'adénine."},
-    {id:"q-mo-04",m:"mol",ch:"Acides nucléiques",q:"Combien de paires de bases s'enroulent autour d'un nucléosome ?",o:["47","147","247","1470"],r:1,e:"Environ 147 pb autour de l'octamère d'histones ; H1 verrouille l'ensemble."},
-    {id:"q-mo-05",m:"mol",ch:"Acides nucléiques",q:"Quelle modification épigénétique réprime généralement la transcription ?",o:["L'acétylation des histones","La méthylation des îlots CpG","La phosphorylation de l'ARN polymérase","La polyadénylation"],r:1,e:"La méthylation des CpG condense la chromatine ; l'acétylation des histones l'ouvre au contraire."},
-    {id:"q-mo-06",m:"mol",ch:"Réplication",q:"La réplication de l'ADN est dite :",o:["Conservative","Semi-conservative","Dispersive","Aléatoire"],r:1,e:"Chaque molécule fille conserve un brin parental : démontré par Meselson et Stahl en 1958."},
-    {id:"q-mo-07",m:"mol",ch:"Réplication",q:"Dans quel sens l'ADN polymérase synthétise-t-elle le nouveau brin ?",o:["3'→5'","5'→3'","Les deux sens","Selon le brin matrice"],r:1,e:"Toujours 5'→3', ce qui impose la synthèse discontinue du brin retardé."},
-    {id:"q-mo-08",m:"mol",ch:"Réplication",q:"Comment s'appellent les courts fragments du brin retardé ?",o:["Les fragments de Klenow","Les fragments d'Okazaki","Les amorces de Sanger","Les exons"],r:1,e:"Les fragments d'Okazaki sont ensuite reliés par l'ADN ligase."},
-    {id:"q-mo-09",m:"mol",ch:"Réplication",q:"Quelle enzyme pose l'amorce indispensable au démarrage ?",o:["L'hélicase","La primase","La ligase","La topo-isomérase"],r:1,e:"La primase synthétise une courte amorce d'ARN, car les ADN polymérases ne savent pas initier de novo."},
-    {id:"q-mo-10",m:"mol",ch:"Réplication",q:"Quel rôle joue la télomérase ?",o:["Elle coupe les télomères","Elle allonge les extrémités chromosomiques","Elle réplique les plasmides","Elle épisse les introns"],r:1,e:"Elle compense le raccourcissement des télomères, surtout dans les cellules souches et tumorales."},
-    {id:"q-mo-11",m:"mol",ch:"Expression",q:"Quelle ARN polymérase eucaryote transcrit les ARN messagers ?",o:["ARN pol I","ARN pol II","ARN pol III","La primase"],r:1,e:"Pol I → ARNr, Pol II → ARNm, Pol III → ARNt et ARNr 5S."},
-    {id:"q-mo-12",m:"mol",ch:"Expression",q:"Que devient l'intron lors de l'épissage ?",o:["Il est conservé dans l'ARNm mature","Il est éliminé","Il est traduit en peptide signal","Il devient la queue poly-A"],r:1,e:"Les introns sont excisés par le spliceosome ; seuls les exons sont conservés."},
-    {id:"q-mo-13",m:"mol",ch:"Expression",q:"Quelle structure protège l'extrémité 5' de l'ARN messager ?",o:["La queue poly-A","La coiffe 7-méthylguanosine","La boîte TATA","Le site d'épissage"],r:1,e:"La coiffe protège de la dégradation et sert de point d'accroche au ribosome."},
-    {id:"q-mo-14",m:"mol",ch:"Expression",q:"L'opéron lactose est un système :",o:["Inductible","Répressible constitutif","Toujours actif","Propre aux eucaryotes"],r:0,e:"Inductible : la présence de lactose lève la répression. L'opéron tryptophane est lui répressible."},
-    {id:"q-mo-15",m:"mol",ch:"Expression",q:"Combien de codons compte le code génétique ?",o:["20","32","61","64"],r:3,e:"64 codons au total, dont 61 codent un acide aminé et 3 sont des codons stop."},
-    {id:"q-mo-16",m:"mol",ch:"Expression",q:"Quel codon initie la traduction ?",o:["AUG","UAA","UGA","GUA"],r:0,e:"AUG code la méthionine et sert de codon initiateur."},
-    {id:"q-mo-17",m:"mol",ch:"Expression",q:"Le code génétique est redondant, ce qui signifie que :",o:["Un codon peut coder plusieurs acides aminés","Plusieurs codons codent le même acide aminé","Les codons se chevauchent","Il varie d'une espèce à l'autre"],r:1,e:"Redondant mais non ambigu : un codon donné ne correspond qu'à un seul acide aminé."},
-    {id:"q-mo-18",m:"mol",ch:"Expression",q:"Sur quel site du ribosome se fixe l'aminoacyl-ARNt entrant ?",o:["Le site A","Le site P","Le site E","Le site I"],r:0,e:"Site A d'arrivée, site P peptidyl, site E de sortie."},
-    {id:"q-mo-19",m:"mol",ch:"Génome",q:"Une mutation faux-sens entraîne :",o:["Le remplacement d'un acide aminé","Un codon stop prématuré","Un décalage du cadre de lecture","Aucun changement de protéine"],r:0,e:"Faux-sens = acide aminé différent ; non-sens = codon stop ; silencieuse = même acide aminé."},
-    {id:"q-mo-20",m:"mol",ch:"Génome",q:"Quelle lésion les UV provoquent-ils typiquement ?",o:["Des cassures double brin","Des dimères de thymine","Des alkylations","Des délétions de triplets"],r:1,e:"Les dimères de pyrimidines sont réparés par excision de nucléotides (NER)."},
-    {id:"q-mo-21",m:"mol",ch:"Génome",q:"Une insertion de deux nucléotides dans une séquence codante provoque :",o:["Une mutation silencieuse","Un décalage du cadre de lecture","Une simple substitution","Une duplication génique"],r:1,e:"Tout ajout ou retrait non multiple de 3 décale le cadre de lecture et modifie toute la suite de la protéine."},
-    {id:"q-mo-22",m:"mol",ch:"Techniques",q:"À quelle température se déroule la dénaturation en PCR ?",o:["55 °C","72 °C","95 °C","37 °C"],r:2,e:"Dénaturation à environ 95 °C, hybridation entre 50 et 65 °C, élongation à 72 °C."},
-    {id:"q-mo-23",m:"mol",ch:"Techniques",q:"Combien de copies obtient-on théoriquement après 30 cycles de PCR ?",o:["30","2 × 30","2³⁰","30²"],r:2,e:"L'amplification est exponentielle : 2ⁿ copies après n cycles, soit environ un milliard."},
-    {id:"q-mo-24",m:"mol",ch:"Techniques",q:"Quelle enzyme permet de partir d'un ARN en RT-PCR ?",o:["La Taq polymérase","La transcriptase inverse","La ligase","L'hélicase"],r:1,e:"La transcriptase inverse convertit l'ARN en ADN complémentaire avant amplification."},
-    {id:"q-mo-25",m:"mol",ch:"Techniques",q:"Vers quelle électrode migre l'ADN en électrophorèse ?",o:["Vers la cathode (−)","Vers l'anode (+)","Il ne migre pas","Cela dépend de la taille"],r:1,e:"L'ADN est chargé négativement à cause des groupements phosphate : il migre vers l'anode positive."},
-    {id:"q-mo-26",m:"mol",ch:"Techniques",q:"Que détecte un Western blot ?",o:["De l'ADN","De l'ARN","Des protéines","Des lipides"],r:2,e:"Southern = ADN, Northern = ARN, Western = protéines."},
-    {id:"q-mo-27",m:"mol",ch:"Techniques",q:"Sur quel principe repose le séquençage de Sanger ?",o:["La ligature d'adaptateurs","L'incorporation de didésoxynucléotides terminateurs","La coupure par enzymes de restriction","L'hybridation sur puce"],r:1,e:"Les ddNTP stoppent l'élongation et génèrent des fragments de toutes tailles, lus par électrophorèse."},
-    {id:"q-mo-28",m:"mol",ch:"Techniques",q:"Quel élément guide la nucléase Cas9 vers sa cible ?",o:["Un ARN guide","Une amorce ADN","Un anticorps","Un peptide signal"],r:0,e:"L'ARN guide s'apparie à la séquence cible et positionne Cas9 pour la coupure."},
-    {id:"q-mo-29",m:"mol",ch:"Techniques",q:"Que reconnaît une enzyme de restriction ?",o:["Un promoteur","Une séquence palindromique","Une queue poly-A","Un codon stop"],r:1,e:"Sites palindromiques de 4 à 8 pb, coupés en extrémités cohésives ou franches."},
-    {id:"q-mo-30",m:"mol",ch:"Techniques",q:"À quoi sert le gène de résistance à un antibiotique porté par un plasmide ?",o:["À amplifier l'insert","À sélectionner les bactéries transformées","À couper l'ADN","À initier la transcription"],r:1,e:"Seules les bactéries ayant intégré le plasmide poussent sur le milieu sélectif."}
-  ],
-
-  livres:[
-    {id:"liv-01",titre:"Anatomie sous forme de fiches",soustitre:"Tous les systèmes du corps humain",prix:10,pages:80,m:"anat",c1:"#8B5CF6",c2:"#EC4899",
-     desc:"L'essentiel de l'anatomie en fiches illustrées : locomoteur, nerveux, cardio-vasculaire, respiratoire, digestif, urinaire, génital, endocrinien et tégumentaire.",
-     sommaire:["Système locomoteur : squelette, articulations, muscles","Système nerveux central, périphérique et autonome","Cœur et vaisseaux sanguins","Voies respiratoires et poumons","Tractus digestif et organes annexes","Reins et voies urinaires","Système génital, endocrinien et tégumentaire"]},
-    {id:"liv-02",titre:"Biologie cellulaire en fiches",soustitre:"De la membrane au cycle cellulaire",prix:10,pages:64,m:"cell",c1:"#2563EB",c2:"#38BDF8",
-     desc:"Structure et fonctions de la cellule, transports membranaires, organites, métabolisme énergétique, division et signalisation.",
-     sommaire:["Procaryotes et eucaryotes","Membrane plasmique et transports","Organites et trafic vésiculaire","Respiration cellulaire","Cycle cellulaire, mitose et méiose","Signalisation et jonctions"]},
-    {id:"liv-03",titre:"Biologie moléculaire en fiches",soustitre:"ADN, ARN, protéines et techniques",prix:10,pages:72,m:"mol",c1:"#EC4899",c2:"#8B5CF6",
-     desc:"Du nucléotide au séquençage haut débit : réplication, transcription, traduction, mutations, PCR, clonage et CRISPR.",
-     sommaire:["Structure des acides nucléiques","Réplication de l'ADN","Transcription et maturation","Traduction et code génétique","Mutations et réparation","PCR, électrophorèse, séquençage","Génie génétique"]},
-    {id:"liv-04",titre:"Pack intégral — les 3 tomes",soustitre:"Anatomie + cellulaire + moléculaire",prix:24,pages:216,m:"all",c1:"#5B4BE8",c2:"#F472B6",
-     desc:"Les trois ouvrages réunis, mis à jour à chaque nouvelle édition. Le format le plus complet pour préparer les partiels.",
-     sommaire:["Les 216 pages des trois tomes","Index commun des termes","Mises à jour incluses"]}
-  ]
+  fiches:[],
+  questions:[],
+  livres:[]
 };
 
 /* =====================================================================
@@ -3327,11 +2513,6 @@ function devDonnees(){
       <p class="small muted" style="margin:8px 0 16px">Remplace la base actuelle par un fichier exporté auparavant.</p>
       <input type="file" accept="application/json" id="fichier-import" onchange="importer(event)" style="padding:9px">
     </article>
-    <article class="carte">
-      <h3>Recharger le contenu d'origine</h3>
-      <p class="small muted" style="margin:8px 0 16px">Restaure les fiches, questions, livres et matières livrés avec l'application. Les comptes et les ventes sont conservés.</p>
-      <button class="btn" onclick="restaurerContenu()">Restaurer le contenu</button>
-    </article>
     <article class="carte" style="border-color:rgba(251,113,133,.35)">
       <h3 style="color:var(--rouge)">Tout réinitialiser</h3>
       <p class="small muted" style="margin:8px 0 16px">Efface la base complète, y compris les comptes et l'historique des ventes.</p>
@@ -3415,8 +2596,8 @@ function confirmerSuppression(collection, id){
 
   const an = document.getElementById("annee");
   if(an) an.textContent = new Date().getFullYear();
-  document.getElementById("vit-fiches").textContent = DB.fiches.length;
-  document.getElementById("vit-questions").textContent = DB.questions.length;
+  document.getElementById("vit-fiches").textContent = DB.fiches.length || "—";
+  document.getElementById("vit-questions").textContent = DB.questions.length || "—";
 
   const retour = new URLSearchParams(location.search).get("paiement");
   if(retour){
@@ -4723,6 +3904,170 @@ vueDev = function(){
     ${onglets.map(([k,n]) => `<button class="chip ${ongletDev===k?"actif":""}" onclick="ongletDev='${k}';rechercheDev='';App.aller('dev')">${n}</button>`).join("")}
   </div>
   ${(rendus[ongletDev] || devQuestions)()}`;
+};
+
+
+/* ---------------------------------------------------------------------
+   8. TRANCHE D'AGE ET NIVEAU D'ETUDES
+   On demande une tranche, pas une date de naissance : c'est suffisant pour
+   adapter les fiches, et ca evite de conserver une donnee qui identifie
+   precisement un mineur.
+   --------------------------------------------------------------------- */
+
+const TRANCHES = [
+  ["18-20", "18 à 20 ans"],
+  ["21-24", "21 à 24 ans"],
+  ["25-29", "25 à 29 ans"],
+  ["30+",   "30 ans et plus"]
+];
+
+const NIVEAUX = [
+  "PASS / LAS", "Licence 1", "Licence 2", "Licence 3", "Master",
+  "IFSI / paramédical", "BTS / DUT", "Reconversion", "Autre"
+];
+
+const libelleTranche = v => (TRANCHES.find(t => t[0] === v) || [null,"non renseigné"])[1];
+
+function optionsTranche(actuelle){
+  return `<option value="">— choisis —</option>` +
+    TRANCHES.map(([v,n]) => `<option value="${v}" ${actuelle===v?"selected":""}>${n}</option>`).join("");
+}
+function optionsNiveau(actuel){
+  return `<option value="">— non précisé —</option>` +
+    NIVEAUX.map(n => `<option value="${esc(n)}" ${actuel===n?"selected":""}>${esc(n)}</option>`).join("");
+}
+
+/* Champs ajoutés au formulaire d'inscription, qui est en dur dans la page */
+(function ajouterChampsInscription(){
+  const form = document.getElementById("form-inscription");
+  if(!form) return;
+  const bouton = form.querySelector('button[type="submit"]');
+  if(!bouton) return;
+  bouton.insertAdjacentHTML("beforebegin", `
+    <div class="rang" style="gap:12px">
+      <div class="champ" style="flex:1">
+        <label for="i-age">Tranche d'âge</label>
+        <select id="i-age" required>${optionsTranche("")}</select>
+      </div>
+      <div class="champ" style="flex:1">
+        <label for="i-niveau">Niveau d'études</label>
+        <select id="i-niveau">${optionsNiveau("")}</select>
+      </div>
+    </div>
+    <p class="tiny muted" style="margin:-4px 0 12px;line-height:1.5">
+      Sert uniquement à adapter le contenu des fiches. Jamais affiché aux autres élèves.
+    </p>
+    <label class="rang small" style="gap:9px;align-items:flex-start;margin-bottom:14px;line-height:1.5">
+      <input type="checkbox" id="i-majeur" required style="width:auto;margin-top:3px">
+      <span>Je certifie avoir 18 ans ou plus. Le site n'est pas ouvert aux mineurs.</span>
+    </label>`);
+})();
+
+/* On laisse l'inscription d'origine faire son travail, puis on complète */
+const _inscrireOrigine = Auth.inscrire.bind(Auth);
+Auth.inscrire = async function(e){
+  const age = (($("#i-age") || {}).value || "").trim();
+  const niveau = (($("#i-niveau") || {}).value || "").trim();
+  const majeur = (($("#i-majeur") || {}).checked) === true;
+
+  // le site n'accueille pas de mineurs : on bloque avant toute creation
+  if(!majeur || !age){
+    e.preventDefault();
+    return toast("L'inscription est réservée aux personnes majeures.","ko");
+  }
+
+  await _inscrireOrigine(e);
+  if(U && age){
+    U.age = age;
+    if(niveau) U.niveau = niveau;
+    sauver();
+  }
+};
+
+/* Renseigner ou corriger depuis le profil : les comptes créés avant
+   cette version n'ont rien, sinon ils resteraient hors des statistiques. */
+function modaleAge(){
+  modale(`
+    <p class="eyebrow">Profil</p>
+    <h2 style="margin:8px 0 10px">Ton profil d'étude</h2>
+    <p class="small muted" style="margin-bottom:18px">
+      Ces informations servent à adapter les fiches au niveau des élèves. Elles ne sont
+      visibles que de toi et de l'équipe du site.
+    </p>
+    <form onsubmit="sauverAge(event)">
+      <div class="champ"><label for="pa-age">Tranche d'âge</label>
+        <select id="pa-age" required>${optionsTranche(U.age || "")}</select></div>
+      <div class="champ"><label for="pa-niveau">Niveau d'études</label>
+        <select id="pa-niveau">${optionsNiveau(U.niveau || "")}</select></div>
+      <button class="btn primaire large" type="submit">Enregistrer</button>
+      <button class="btn fantome" type="button" style="width:100%;margin-top:8px" onclick="fermerModale()">Annuler</button>
+    </form>`);
+}
+
+function sauverAge(e){
+  e.preventDefault();
+  U.age = $("#pa-age").value;
+  const n = $("#pa-niveau").value;
+  if(n) U.niveau = n; else delete U.niveau;
+  sauver(); fermerModale();
+  toast("Profil mis à jour.","ok");
+  App.aller("profil");
+}
+
+const _vueProfilOrigine = vueProfil;
+vueProfil = function(){
+  let html = _vueProfilOrigine();
+  const ligne = `<tr><td class="muted">Âge et niveau</td><td>
+      ${U.age ? esc(libelleTranche(U.age)) : '<span class="pastille or">à renseigner</span>'}
+      ${U.niveau ? " · " + esc(U.niveau) : ""}
+      <button class="btn mini fantome" style="margin-left:6px" onclick="modaleAge()">${U.age ? "Modifier" : "Renseigner"}</button>
+    </td></tr>`;
+  return html.replace('<tr><td class="muted">Inscription</td>', ligne + '<tr><td class="muted">Inscription</td>');
+};
+
+/* Répartition affichée en tête de l'onglet Utilisateurs */
+function repartition(champ, entrees){
+  const total = DB.users.length || 1;
+  const compte = {};
+  DB.users.forEach(u => {
+    const v = u[champ] || "";
+    compte[v] = (compte[v] || 0) + 1;
+  });
+  const lignes = entrees.map(([v, n]) => [n, compte[v] || 0]);
+  const manquants = compte[""] || 0;
+  if(manquants) lignes.push(["Non renseigné", manquants]);
+
+  return lignes.map(([nom, nb]) => {
+    const pct = Math.round(nb / total * 100);
+    return `<div style="margin-bottom:11px">
+      <div class="entre" style="margin-bottom:5px">
+        <span class="small">${esc(nom)}</span>
+        <span class="small muted">${nb} · ${pct}%</span>
+      </div>
+      <div class="barre"><span style="width:${pct}%"></span></div>
+    </div>`;
+  }).join("");
+}
+
+const _devUsersOrigine = devUsers;
+devUsers = function(){
+  const renseignes = DB.users.filter(u => u.age).length;
+  const bloc = `
+  <div class="grille g2" style="margin-bottom:20px">
+    <article class="carte">
+      <p class="eyebrow" style="margin-bottom:14px">Répartition par âge</p>
+      ${repartition("age", TRANCHES)}
+      <p class="tiny muted" style="margin-top:10px;line-height:1.5">
+        ${renseignes} compte${renseignes>1?"s":""} sur ${DB.users.length} ${renseignes>1?"ont":"a"} renseigné sa tranche.
+        ${renseignes < DB.users.length ? "Les comptes créés avant l'ajout de ce champ peuvent le compléter depuis leur profil." : ""}
+      </p>
+    </article>
+    <article class="carte">
+      <p class="eyebrow" style="margin-bottom:14px">Répartition par niveau</p>
+      ${repartition("niveau", NIVEAUX.map(n => [n, n]))}
+    </article>
+  </div>`;
+  return bloc + _devUsersOrigine();
 };
 
 </script>
