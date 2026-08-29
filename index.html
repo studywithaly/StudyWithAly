@@ -3824,6 +3824,300 @@ async function validerImport(bouton){
   }
 }
 
+
+/* =====================================================================
+   MODULE — Notes personnelles & flashcards générées depuis un PDF
+   À coller tel quel juste AVANT la balise </script> finale.
+   Ce bloc ne modifie aucune fonction existante : il les enveloppe.
+   ===================================================================== */
+
+/* ---------------------------------------------------------------------
+   1. NOTES PERSONNELLES
+   Rangées dans U.notes, donc sauvegardées par sauver() dans users/{id}.
+   Elles n'existent que sur le compte de l'élève : la fiche partagée
+   n'est jamais touchée.
+   --------------------------------------------------------------------- */
+
+function mesNotes(){
+  if(!U) return {};
+  if(!U.notes || typeof U.notes !== "object") U.notes = {};
+  return U.notes;
+}
+function maNote(ficheId){ return (mesNotes()[ficheId] || "").trim(); }
+
+let minuteurNote = null;
+
+function saisirNote(ficheId, valeur){
+  mesNotes()[ficheId] = valeur;
+  const etat = $("#note-etat");
+  if(etat) etat.textContent = "Modifications en cours…";
+  clearTimeout(minuteurNote);
+  minuteurNote = setTimeout(() => {
+    if(!valeur.trim()) delete mesNotes()[ficheId];
+    sauver();
+    const e2 = $("#note-etat");
+    if(e2) e2.textContent = valeur.trim() ? "Enregistré" : "Note vide, supprimée";
+  }, 1200);
+}
+
+function effacerNote(ficheId){
+  delete mesNotes()[ficheId];
+  sauver();
+  const z = $("#note-zone");
+  if(z) z.value = "";
+  const e = $("#note-etat");
+  if(e) e.textContent = "Note supprimée";
+  toast("Note supprimée.","ok");
+}
+
+function htmlPanneauNote(f){
+  const n = maNote(f.id);
+  return `
+    <section class="carte" style="margin-top:26px;padding:18px 20px">
+      <div class="rang" style="justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px">
+        <div class="rang" style="gap:8px;align-items:center">
+          <span class="pastille bleu">Ma note</span>
+          <span class="tiny muted">visible seulement par toi</span>
+        </div>
+        <span id="note-etat" class="tiny muted">${n ? "Enregistré" : ""}</span>
+      </div>
+      <textarea id="note-zone" placeholder="Ce que tu n'as pas compris, un moyen mnémotechnique, un renvoi vers ton cours…"
+        style="min-height:110px;width:100%"
+        oninput="saisirNote('${f.id}', this.value)">${esc(n)}</textarea>
+      <div class="rang" style="gap:8px;margin-top:10px">
+        <button class="btn mini fantome" type="button" onclick="effacerNote('${f.id}')">Effacer ma note</button>
+      </div>
+    </section>`;
+}
+
+/* On enveloppe ouvrirFiche : le rendu d'origine tourne, puis on ajoute
+   le panneau de note à la fin de l'article. */
+const _ouvrirFicheOrigine = ouvrirFiche;
+ouvrirFiche = function(id){
+  _ouvrirFicheOrigine(id);
+  const f = DB.fiches.find(x => x.id === id);
+  if(!f || !U) return;
+  const article = document.querySelector("#zone .lecteur");
+  if(!article) return;              // fiche premium bloquée : pas de note
+  article.insertAdjacentHTML("beforeend", htmlPanneauNote(f));
+};
+
+/* Pastille sur les fiches qui portent déjà une note */
+const _carteFicheOrigine = carteFiche;
+carteFiche = function(f, q, avecMatiere){
+  let html = _carteFicheOrigine(f, q, avecMatiere);
+  if(maNote(f.id)){
+    html = html.replace('<div class="rang" style="gap:8px">',
+      '<div class="rang" style="gap:8px"><span class="pastille bleu">Ma note</span>');
+  }
+  return html;
+};
+
+
+/* ---------------------------------------------------------------------
+   2. FLASHCARDS GÉNÉRÉES DEPUIS LE PDF
+   Le texte est extrait dans le navigateur avec PDF.js, envoyé à la
+   fonction Netlify generer-flashcards, et les propositions sont
+   affichées pour sélection avant enregistrement.
+   Les cartes validées sont rangées dans f.cartes sur la fiche partagée.
+   --------------------------------------------------------------------- */
+
+const PDFJS_SRC    = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+const PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+const TAILLE_LOT   = 13000;   // marge sous la limite de la fonction serveur
+
+let pdfjsPret = null;
+function chargerPdfJs(){
+  if(pdfjsPret) return pdfjsPret;
+  pdfjsPret = new Promise((ok, ko) => {
+    if(window.pdfjsLib){ ok(window.pdfjsLib); return; }
+    const s = document.createElement("script");
+    s.src = PDFJS_SRC;
+    s.onload = () => {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+      ok(window.pdfjsLib);
+    };
+    s.onerror = () => ko(new Error("PDF.js n'a pas pu être chargé"));
+    document.head.appendChild(s);
+  });
+  return pdfjsPret;
+}
+
+async function extraireTextePdf(url, surAvancement){
+  const lib = await chargerPdfJs();
+  const doc = await lib.getDocument(url).promise;
+  const morceaux = [];
+  for(let p = 1; p <= doc.numPages; p++){
+    if(surAvancement) surAvancement("Lecture de la page " + p + " sur " + doc.numPages + "…");
+    const page = await doc.getPage(p);
+    const contenu = await page.getTextContent();
+    morceaux.push(contenu.items.map(i => i.str).join(" "));
+  }
+  return morceaux.join("\n\n").replace(/[ \t]+/g, " ").trim();
+}
+
+/* Découpe en lots sans couper au milieu d'une phrase */
+function decouper(texte){
+  const lots = [];
+  let reste = texte;
+  while(reste.length > TAILLE_LOT){
+    let coupe = reste.lastIndexOf(". ", TAILLE_LOT);
+    if(coupe < TAILLE_LOT * 0.5) coupe = TAILLE_LOT;
+    lots.push(reste.slice(0, coupe + 1));
+    reste = reste.slice(coupe + 1);
+  }
+  if(reste.trim()) lots.push(reste);
+  return lots;
+}
+
+let CartesProposees = [];
+
+async function genererCartesPdf(ficheId){
+  const f = DB.fiches.find(x => x.id === ficheId);
+  if(!f) return;
+  if(!f.pdf) return toast("Cette fiche n'a pas de document PDF.","ko");
+
+  modale(`
+    <p class="eyebrow">Flashcards</p>
+    <h2 style="margin:8px 0 14px">${esc(f.t)}</h2>
+    <p id="gen-etat" class="small muted">Ouverture du document…</p>
+    <p class="tiny muted" style="margin-top:14px;line-height:1.55">
+      Le texte du PDF est lu dans ton navigateur, puis analysé pour te proposer
+      des cartes. Rien n'est enregistré tant que tu n'as pas validé.
+    </p>`);
+
+  const dire = t => { const e = $("#gen-etat"); if(e) e.textContent = t; };
+
+  try{
+    const texte = await extraireTextePdf(f.pdf, dire);
+    if(texte.length < 200){
+      fermerModale();
+      return toast("Ce PDF ne contient pas de texte sélectionnable — il est probablement scanné en image.","ko");
+    }
+
+    const lots = decouper(texte);
+    const toutes = [];
+    for(let i = 0; i < lots.length; i++){
+      dire("Analyse " + (i+1) + " sur " + lots.length + "…");
+      const r = await appelServeur("generer-flashcards", { texte: lots[i], nombre: 15 });
+      toutes.push(...(r.cartes || []));
+    }
+
+    if(!toutes.length){
+      fermerModale();
+      return toast("Aucune carte n'a pu être tirée de ce document.","ko");
+    }
+
+    CartesProposees = toutes;
+    fermerModale();
+    modaleSelectionCartes(f);
+
+  }catch(e){
+    fermerModale();
+    toast("Génération impossible : " + e.message, "ko");
+  }
+}
+
+function modaleSelectionCartes(f){
+  const dejaLa = (f.cartes || []).length;
+  modale(`
+    <p class="eyebrow">Flashcards proposées</p>
+    <h2 style="margin:8px 0 6px">${esc(f.t)}</h2>
+    <p class="small muted" style="margin-bottom:6px">
+      ${CartesProposees.length} carte${CartesProposees.length>1?"s":""} proposée${CartesProposees.length>1?"s":""}.
+      Décoche celles que tu ne veux pas, corrige librement les textes.
+    </p>
+    ${dejaLa ? `<p class="tiny muted" style="margin-bottom:14px">Cette fiche a déjà ${dejaLa} carte${dejaLa>1?"s":""} : les nouvelles s'y ajouteront.</p>` : ""}
+    <div class="rang" style="gap:8px;margin:12px 0 16px">
+      <button class="btn mini fantome" type="button" onclick="cocherToutesCartes(true)">Tout cocher</button>
+      <button class="btn mini fantome" type="button" onclick="cocherToutesCartes(false)">Tout décocher</button>
+    </div>
+    <div style="max-height:52vh;overflow:auto;padding-right:6px">
+      ${CartesProposees.map((c,i) => `
+        <div class="carte" style="padding:14px;margin-bottom:10px">
+          <label class="rang" style="gap:8px;align-items:center;margin-bottom:10px">
+            <input type="checkbox" class="carte-choix" data-i="${i}" checked style="width:auto">
+            <span class="tiny muted">${esc(c.source || "sans section")}</span>
+          </label>
+          <div class="champ" style="margin-bottom:8px">
+            <label class="tiny">Recto</label>
+            <textarea class="carte-recto" data-i="${i}" style="min-height:52px">${esc(c.recto)}</textarea>
+          </div>
+          <div class="champ" style="margin-bottom:0">
+            <label class="tiny">Verso</label>
+            <textarea class="carte-verso" data-i="${i}" style="min-height:64px">${esc(c.verso)}</textarea>
+          </div>
+        </div>`).join("")}
+    </div>
+    <button class="btn primaire large" type="button" style="margin-top:16px" onclick="enregistrerCartes('${f.id}')">Enregistrer les cartes cochées</button>
+    <button class="btn fantome" type="button" style="width:100%;margin-top:8px" onclick="fermerModale()">Annuler</button>`, true);
+}
+
+function cocherToutesCartes(etat){
+  document.querySelectorAll(".carte-choix").forEach(c => { c.checked = etat; });
+}
+
+function enregistrerCartes(ficheId){
+  const f = DB.fiches.find(x => x.id === ficheId);
+  if(!f) return;
+  const gardees = [];
+  document.querySelectorAll(".carte-choix").forEach(choix => {
+    if(!choix.checked) return;
+    const i = choix.dataset.i;
+    const r = (document.querySelector('.carte-recto[data-i="' + i + '"]') || {}).value || "";
+    const v = (document.querySelector('.carte-verso[data-i="' + i + '"]') || {}).value || "";
+    if(r.trim() && v.trim()){
+      gardees.push({ r:r.trim(), v:v.trim(), src:f.t + (CartesProposees[i].source ? " · " + CartesProposees[i].source : "") });
+    }
+  });
+  if(!gardees.length) return toast("Aucune carte cochée.","ko");
+
+  f.cartes = (f.cartes || []).concat(gardees);
+  sauverContenu()
+    .then(() => { fermerModale(); toast(gardees.length + " carte" + (gardees.length>1?"s":"") + " enregistrée" + (gardees.length>1?"s":"") + ".","ok"); App.aller("dev"); })
+    .catch(e => toast("Publication impossible : " + e.message,"ko"));
+}
+
+/* Les cartes enregistrées rejoignent le jeu de flashcards */
+const _fabriquerCartesOrigine = fabriquerCartes;
+fabriquerCartes = function(mid, source){
+  const cartes = _fabriquerCartesOrigine(mid, source);
+  if(source !== "questions"){
+    DB.fiches.filter(f => mid === "all" || f.m === mid).forEach(f => {
+      if(f.prem && !accesPremium()) return;
+      (f.cartes || []).forEach(c => cartes.push({ r:c.r, v:c.v, src:c.src || f.t, m:f.m }));
+    });
+  }
+  return cartes;
+};
+
+/* Bouton de génération injecté dans le formulaire d'édition de fiche */
+const _editFicheOrigine = editFiche;
+editFiche = function(id){
+  _editFicheOrigine(id);
+  if(!id) return;                     // pas de PDF sur une fiche pas encore créée
+  const f = DB.fiches.find(x => x.id === id);
+  if(!f || !f.pdf) return;
+  const champ = document.getElementById("f-pdf");
+  if(!champ) return;
+  const nb = (f.cartes || []).length;
+  champ.closest(".champ").insertAdjacentHTML("beforeend", `
+    <div class="rang" style="gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap">
+      <button type="button" class="btn mini" onclick="genererCartesPdf('${id}')">Générer des flashcards depuis ce PDF</button>
+      ${nb ? `<span class="tiny muted">${nb} carte${nb>1?"s":""} déjà enregistrée${nb>1?"s":""}</span>
+              <button type="button" class="btn mini fantome" onclick="viderCartes('${id}')">Toutes les retirer</button>` : ""}
+    </div>`);
+};
+
+function viderCartes(ficheId){
+  const f = DB.fiches.find(x => x.id === ficheId);
+  if(!f) return;
+  f.cartes = [];
+  sauverContenu()
+    .then(() => { fermerModale(); toast("Cartes retirées.","ok"); App.aller("dev"); })
+    .catch(e => toast("Publication impossible : " + e.message,"ko"));
+}
+
 </script>
 </body>
 </html>
