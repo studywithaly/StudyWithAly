@@ -4070,6 +4070,219 @@ devUsers = function(){
   return bloc + _devUsersOrigine();
 };
 
+
+/* ---------------------------------------------------------------------
+   9. FICHIERS PROTEGES PAR FIREBASE STORAGE
+   L'adresse de telechargement classique de Firebase porte un jeton
+   permanent et reste publique : elle ne verifie aucune regle. On demande
+   donc le fichier avec le jeton d'identite de l'utilisateur, ce qui fait
+   reellement appliquer les regles Storage, puis on l'ouvre depuis la
+   memoire du navigateur.
+   Un chemin ecrit « storage:livres/liv-01.pdf » passe par ce canal ;
+   un chemin ordinaire reste servi publiquement, comme avant.
+   --------------------------------------------------------------------- */
+
+const PREFIXE_PROTEGE = "storage:";
+const estProtege = c => typeof c === "string" && c.startsWith(PREFIXE_PROTEGE);
+
+const CacheFichiers = {};      // chemin -> URL locale, valable le temps de la session
+
+async function urlProtegee(chemin){
+  const cle = chemin.slice(PREFIXE_PROTEGE.length);
+  if(CacheFichiers[cle]) return CacheFichiers[cle];
+
+  if(!MODE_CLOUD || !fauth.currentUser) throw new Error("connexion requise");
+  const jeton = await fauth.currentUser.getIdToken();
+  const bucket = CONFIG_FIREBASE.storageBucket;
+  const adresse = "https://firebasestorage.googleapis.com/v0/b/" + bucket
+                + "/o/" + encodeURIComponent(cle) + "?alt=media";
+
+  const r = await fetch(adresse, { headers: { Authorization: "Firebase " + jeton } });
+
+  if(r.status === 403) throw new Error("cet ouvrage n'est pas dans ta bibliothèque");
+  if(r.status === 404) throw new Error("fichier introuvable sur le serveur");
+  if(!r.ok) throw new Error("téléchargement refusé (" + r.status + ")");
+
+  const url = URL.createObjectURL(await r.blob());
+  CacheFichiers[cle] = url;
+  return url;
+}
+
+/* Ouverture d'un ouvrage : on intercepte les chemins protégés,
+   le reste continue de passer par le code d'origine. */
+const _telechargerLivreOrigine = telechargerLivre;
+telechargerLivre = async function(id){
+  const l = DB.livres.find(x => x.id === id);
+  if(!l || !estProtege(l.pdf)) return _telechargerLivreOrigine(id);
+
+  if(!possede(id)) return toast("Cet ouvrage n'est pas dans ta bibliothèque.","ko");
+
+  toast("Préparation du document…");
+  try{
+    const url = await urlProtegee(l.pdf);
+    tracer("PDF ouvert : " + l.titre); sauver();
+    window.open(url, "_blank", "noopener");
+  }catch(e){
+    toast("Ouverture impossible : " + e.message, "ko");
+  }
+};
+
+/* Une fiche dont le PDF est protégé : on résout l'adresse après le rendu,
+   puis on remplace la source du lecteur et des deux boutons. */
+const _ouvrirFicheAvantStorage = ouvrirFiche;
+ouvrirFiche = function(id){
+  _ouvrirFicheAvantStorage(id);
+  const f = DB.fiches.find(x => x.id === id);
+  if(!f || !estProtege(f.pdf)) return;
+
+  const cadre = document.querySelector("#zone .visionneuse iframe");
+  const liens = document.querySelectorAll("#zone .visionneuse a");
+  if(cadre) cadre.removeAttribute("src");
+  liens.forEach(a => a.removeAttribute("href"));
+
+  urlProtegee(f.pdf).then(url => {
+    if(cadre) cadre.src = url + "#view=FitH";
+    liens.forEach(a => { a.href = url; });
+  }).catch(e => {
+    const z = document.querySelector("#zone .visionneuse .tiny");
+    if(z) z.textContent = "Document indisponible : " + e.message;
+  });
+};
+
+/* L'extraction du QCM doit aussi savoir lire un PDF protégé */
+const _extraireDuPdfOrigine = extraireDuPdf;
+extraireDuPdf = async function(ficheId){
+  const f = DB.fiches.find(x => x.id === ficheId);
+  if(f && estProtege(f.pdf)){
+    try{
+      const url = await urlProtegee(f.pdf);
+      const copie = Object.assign({}, f, { pdf: url });
+      const i = DB.fiches.indexOf(f);
+      DB.fiches[i] = copie;                 // le temps de l'extraction
+      await _extraireDuPdfOrigine(ficheId);
+      DB.fiches[i] = f;
+      return;
+    }catch(e){
+      return toast("Lecture impossible : " + e.message, "ko");
+    }
+  }
+  return _extraireDuPdfOrigine(ficheId);
+};
+
+/* Rappel dans le formulaire d'édition, pour ne pas avoir à retenir la syntaxe */
+const _editLivreOrigine = editLivre;
+editLivre = function(id){
+  _editLivreOrigine(id);
+  const champ = document.getElementById("l-pdf");
+  if(!champ) return;
+  champ.closest(".champ").insertAdjacentHTML("beforeend", `
+    <p class="tiny muted" style="margin-top:7px;line-height:1.55">
+      Pour un ouvrage <b>payant</b>, dépose-le dans Firebase Storage sous
+      <code style="font-family:var(--mono);color:var(--bleu)">livres/</code>
+      et écris ici
+      <code style="font-family:var(--mono);color:var(--bleu)">storage:livres/${esc(id || "liv-01")}.pdf</code>.
+      Le fichier n'est alors téléchargeable que par les comptes qui y ont droit.
+    </p>`);
+};
+
+
+/* ---------------------------------------------------------------------
+   10. OUVRAGES VENDUS AILLEURS
+   Un livre peut porter un lien externe, Amazon par exemple. Dans ce cas la
+   boutique renvoie vers ce lien au lieu de declencher un paiement, et
+   l'ouvrage ne rejoint pas la bibliotheque : le fichier n'est pas chez nous.
+   Les livres sans lien gardent le parcours Stripe complet.
+   --------------------------------------------------------------------- */
+
+/* Champ ajoute au formulaire d'edition */
+const _editLivreAvantLien = editLivre;
+editLivre = function(id){
+  _editLivreAvantLien(id);
+  const champ = document.getElementById("l-pdf");
+  if(!champ) return;
+  const l = id ? DB.livres.find(x => x.id === id) : {};
+  champ.closest(".champ").insertAdjacentHTML("afterend", `
+    <div class="champ">
+      <label>Vendu ailleurs — lien externe (facultatif)</label>
+      <input id="l-lien" value="${esc((l && l.lien) || "")}" placeholder="https://www.amazon.fr/dp/…">
+      <p class="tiny muted" style="margin-top:7px;line-height:1.55">
+        Si ce champ est rempli, la boutique affiche « Voir sur Amazon » et n'encaisse rien :
+        la vente se fait là-bas. L'ouvrage n'apparaît alors pas dans la bibliothèque.
+        Laisse vide pour vendre directement sur le site par Stripe.
+      </p>
+    </div>`);
+};
+
+/* Enregistrement : on reprend le comportement d'origine en ajoutant le lien */
+sauverLivre = function(e, id){
+  e.preventDefault();
+  const d = {
+    titre: $("#l-t").value.trim(), soustitre: $("#l-st").value.trim(),
+    prix: +$("#l-p").value, pages: +$("#l-pg").value,
+    m: $("#l-m").value, c1: $("#l-c1").value.trim(), c2: $("#l-c2").value.trim(),
+    desc: $("#l-d").value.trim(), pdf: $("#l-pdf").value.trim(),
+    lien: (($("#l-lien") || {}).value || "").trim(),
+    sommaire: $("#l-s").value.split("\n").map(s => s.trim()).filter(Boolean)
+  };
+  if(d.lien && !/^https?:\/\//i.test(d.lien))
+    return toast("Le lien doit commencer par https://","ko");
+
+  if(id) Object.assign(DB.livres.find(x => x.id === id), d);
+  else DB.livres.push(Object.assign({ id: uid("liv") }, d));
+
+  sauverContenu()
+    .then(() => { fermerModale(); toast(id ? "Livre mis à jour." : "Livre ajouté.","ok"); App.aller("dev"); })
+    .catch(err => toast("Publication impossible : " + err.message,"ko"));
+};
+
+/* Boutique : le bouton d'achat devient un renvoi vers le vendeur */
+const _vueBoutiqueOrigine = vueBoutique;
+vueBoutique = function(){
+  let html = _vueBoutiqueOrigine();
+  DB.livres.filter(l => l.lien).forEach(l => {
+    const externe = `<a class="btn primaire mini" href="${esc(l.lien)}" target="_blank" rel="noopener">Voir sur Amazon</a>`;
+    html = html
+      .replace(`<button class="btn primaire mini" onclick="paiement('livre','${l.id}',${l.prix})">Acheter</button>`, externe)
+      .replace(`<button class="btn mini" onclick="telechargerLivre('${l.id}')">Télécharger</button>`, externe);
+  });
+  return html;
+};
+
+/* Bibliothèque : un ouvrage vendu ailleurs n'y a pas sa place */
+const _vueBibliothequeOrigine = vueBibliotheque;
+vueBibliotheque = function(){
+  const tous = DB.livres;
+  DB.livres = tous.filter(l => !l.lien);
+  try{ return _vueBibliothequeOrigine(); }
+  finally{ DB.livres = tous; }
+};
+
+/* Filet de sécurité : si un lien externe existe, aucun paiement ne part */
+const _paiementOrigine = paiement;
+paiement = function(type, ref, prix){
+  if(type === "livre"){
+    const l = DB.livres.find(x => x.id === ref);
+    if(l && l.lien){
+      window.open(l.lien, "_blank", "noopener");
+      return;
+    }
+  }
+  return _paiementOrigine(type, ref, prix);
+};
+
+/* Repère dans la console : on voit d'un coup d'œil ce qui part chez Amazon */
+const _devLivresOrigine = devLivres;
+devLivres = function(){
+  let html = _devLivresOrigine();
+  DB.livres.filter(l => l.lien).forEach(l => {
+    html = html.replace(
+      `<span class="prix grad-txt" style="font-size:20px">${l.prix} €</span>`,
+      `<span class="prix grad-txt" style="font-size:20px">${l.prix} €</span>
+       <span class="pastille or">Amazon</span>`);
+  });
+  return html;
+};
+
 </script>
 </body>
 </html>
