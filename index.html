@@ -4567,6 +4567,164 @@ carteFiche = function(f, q, avecMatiere){
   return html;
 };
 
+
+/* ---------------------------------------------------------------------
+   7. ONGLET FLASHCARDS DANS LA CONSOLE
+   Les cartes vivent dans f.cartes, sur chaque fiche. Cet onglet les
+   rassemble pour pouvoir les relire, les corriger et en écrire à la main,
+   sans repasser par l'extraction d'un PDF.
+   Les cartes fabriquées automatiquement depuis les points de cours ne sont
+   pas listées ici : elles n'existent pas en base, elles sont recalculées
+   à chaque séance.
+   --------------------------------------------------------------------- */
+
+function toutesLesCartes(){
+  const out = [];
+  DB.fiches.forEach(f => (f.cartes || []).forEach((c, i) => {
+    out.push({ ficheId:f.id, i, fiche:f, c });
+  }));
+  return out;
+}
+
+function cartesFiltrees(){
+  const q = norm(rechercheDev.trim());
+  return toutesLesCartes()
+    .filter(x => filtreDev === "all" || x.fiche.m === filtreDev)
+    .filter(x => !q || norm(sansBalises(x.c.r + " " + x.c.v + " " + x.fiche.t)).includes(q));
+}
+
+function corpsCartes(){
+  const liste = cartesFiltrees(), q = norm(rechercheDev.trim());
+  if(!liste.length) return `<tr><td colspan="5" class="muted" style="text-align:center;padding:26px">
+    Aucune carte enregistrée. Crée-en une, ou extrais-les d'un PDF depuis une fiche.</td></tr>`;
+  return liste.map(x => `<tr>
+      <td style="max-width:280px">${surligner(x.c.r, q)}</td>
+      <td style="max-width:320px" class="muted">${surligner((x.c.v || "").slice(0,150), q)}${(x.c.v||"").length>150?"…":""}</td>
+      <td><span class="pastille">${esc(nomMat(x.fiche.m))}</span></td>
+      <td class="muted">${esc(x.fiche.t)}</td>
+      <td style="white-space:nowrap;text-align:right">
+        <button class="btn mini fantome" onclick="editCarte('${x.ficheId}',${x.i})">Modifier</button>
+        <button class="btn mini fantome" style="color:var(--rouge)" onclick="supprimerCarte('${x.ficheId}',${x.i})">Supprimer</button>
+      </td></tr>`).join("");
+}
+
+function filtrerDevCartes(v){
+  rechercheDev = v;
+  const c = document.getElementById("corps-cartes");
+  if(c) c.innerHTML = corpsCartes();
+  const n = document.getElementById("nb-cartes");
+  if(n) n.textContent = cartesFiltrees().length + " carte(s)";
+}
+
+function devCartes(){
+  const liste = cartesFiltrees();
+  const auto = fabriquerCartes("all","fiches").length - toutesLesCartes().length;
+  return `
+  <div class="entre" style="margin-bottom:16px">
+    <div class="rang" style="gap:8px">
+      <select style="width:auto" onchange="filtreDev=this.value;App.aller('dev')">
+        <option value="all">Toutes les matières</option>
+        ${DB.matieres.map(m=>`<option value="${m.id}" ${filtreDev===m.id?"selected":""}>${esc(m.nom)}</option>`).join("")}
+      </select>
+      <span class="small muted" id="nb-cartes">${liste.length} carte${liste.length>1?"s":""}</span>
+    </div>
+    <button class="btn primaire mini" onclick="editCarte()">+ Nouvelle carte</button>
+  </div>
+  ${champRecherche("q-dev-cartes", "Chercher dans les rectos, les versos, les fiches…", "filtrerDevCartes")}
+  <div class="carte" style="padding:6px 8px"><div class="tbl-scroll"><table>
+    <thead><tr><th>Recto</th><th>Verso</th><th>Matière</th><th>Fiche</th><th></th></tr></thead>
+    <tbody id="corps-cartes">${corpsCartes()}</tbody>
+  </table></div></div>
+  ${auto > 0 ? `<p class="tiny muted" style="margin-top:12px;line-height:1.55">
+    ${auto} carte${auto>1?"s":""} supplémentaire${auto>1?"s":""} ${auto>1?"sont fabriquées":"est fabriquée"} automatiquement
+    à partir des points de cours rédigés « Terme : définition ». Elles n'apparaissent pas ici
+    car elles sont recalculées à chaque séance : pour les modifier, corrige la fiche elle-même.</p>` : ""}`;
+}
+
+function editCarte(ficheId, i){
+  const nouvelle = ficheId === undefined;
+  const f = nouvelle ? null : DB.fiches.find(x => x.id === ficheId);
+  const c = nouvelle ? { r:"", v:"" } : (f.cartes || [])[i];
+  if(!nouvelle && !c) return;
+
+  modale(`
+    <p class="eyebrow">${nouvelle ? "Nouvelle" : "Modifier la"} flashcard</p>
+    <h2 style="margin:8px 0 18px">${nouvelle ? "Création" : "Édition"}</h2>
+    <form onsubmit="sauverCarte(event,'${nouvelle ? "" : ficheId}',${nouvelle ? -1 : i})">
+      <div class="champ"><label>Fiche à laquelle rattacher la carte</label>
+        <select id="ca-f" ${nouvelle ? "" : "disabled"}>
+          ${DB.fiches.map(x => `<option value="${x.id}" ${(!nouvelle && x.id===ficheId)?"selected":""}>${esc(nomMat(x.m))} · ${esc(x.t)}</option>`).join("")}
+        </select>
+        ${nouvelle ? `<p class="tiny muted" style="margin-top:7px">La carte apparaîtra dans les séances de cette matière.</p>` : ""}
+      </div>
+      <div class="champ"><label>Recto — la question ou le terme</label>
+        <textarea id="ca-r" required style="min-height:70px">${esc(c.r)}</textarea></div>
+      <div class="champ"><label>Verso — la réponse</label>
+        <textarea id="ca-v" required style="min-height:110px">${esc(c.v)}</textarea></div>
+      <button class="btn primaire large" type="submit">Enregistrer</button>
+      <button class="btn fantome" type="button" style="width:100%;margin-top:8px" onclick="fermerModale()">Annuler</button>
+    </form>`, true);
+}
+
+function sauverCarte(e, ficheId, i){
+  e.preventDefault();
+  const cible = i < 0 ? $("#ca-f").value : ficheId;
+  const f = DB.fiches.find(x => x.id === cible);
+  if(!f) return toast("Fiche introuvable.","ko");
+
+  const r = $("#ca-r").value.trim(), v = $("#ca-v").value.trim();
+  if(!r || !v) return toast("Le recto et le verso sont obligatoires.","ko");
+
+  const avant = (f.cartes || []).slice();
+  f.cartes = f.cartes || [];
+  if(i < 0) f.cartes.push({ r, v, src:f.t });
+  else f.cartes[i] = Object.assign({}, f.cartes[i], { r, v });
+
+  sauverContenu()
+    .then(() => { fermerModale(); toast(i < 0 ? "Carte ajoutée." : "Carte mise à jour.","ok"); App.aller("dev"); })
+    .catch(err => { f.cartes = avant; toast("Publication impossible : " + err.message,"ko"); });
+}
+
+function supprimerCarte(ficheId, i){
+  const f = DB.fiches.find(x => x.id === ficheId);
+  if(!f || !(f.cartes||[])[i]) return;
+  modale(`<h2 style="margin-bottom:8px">Supprimer cette carte ?</h2>
+    <p class="small muted" style="margin-bottom:8px">« ${esc(f.cartes[i].r)} »</p>
+    <p class="tiny muted" style="margin-bottom:20px">L'action est définitive.</p>
+    <div class="rang" style="gap:10px">
+      <button class="btn danger" style="flex:1" onclick="confirmerSuppCarte('${ficheId}',${i})">Supprimer</button>
+      <button class="btn fantome" onclick="fermerModale()">Annuler</button></div>`);
+}
+
+function confirmerSuppCarte(ficheId, i){
+  const f = DB.fiches.find(x => x.id === ficheId);
+  if(!f) return;
+  const avant = f.cartes.slice();
+  f.cartes.splice(i, 1);
+  sauverContenu()
+    .then(() => { fermerModale(); toast("Carte supprimée."); App.aller("dev"); })
+    .catch(err => { f.cartes = avant; toast("Publication impossible : " + err.message,"ko"); });
+}
+
+/* On ajoute l'onglet à la console */
+vueDev = function(){
+  if(!U.dev) return `<div class="vide"><h3>Accès réservé</h3><p class="small">Cette console est réservée aux comptes développeur.</p></div>`;
+  const onglets = [["questions","Questions"],["fiches","Fiches"],["cartes","Flashcards"],["livres","Livres"],
+                   ["matieres","Matières"],["users","Utilisateurs"],["licences","Licences"],["donnees","Données"]];
+  const rendus = { questions:devQuestions, fiches:devFiches, cartes:devCartes, livres:devLivres,
+                   matieres:devMatieres, users:devUsers, licences:devLicences, donnees:devDonnees };
+  return `
+  <header class="tete">
+    <p class="eyebrow">Console développeur</p>
+    <h1>Gérer le contenu</h1>
+    <p class="muted">Tout ce que tu modifies ici est immédiatement visible côté élève.</p>
+  </header>
+  <div class="matiere-onglets">
+    ${onglets.map(([k,n]) => `<button class="chip ${ongletDev===k?"actif":""}" onclick="ongletDev='${k}';rechercheDev='';App.aller('dev')">${n}</button>`).join("")}
+  </div>
+  ${(rendus[ongletDev] || devQuestions)()}`;
+};
+
 </script>
 </body>
 </html>
