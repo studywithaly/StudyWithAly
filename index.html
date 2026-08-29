@@ -3526,20 +3526,11 @@ async function analyserPdf(fichier, avecImages, progres, debut, fin){
     await patienter();
     const page = await doc.getPage(n);
 
-    // regroupement des fragments de texte en lignes, par ordonnée
+    // découpage récursif en blocs : indispensable sur une mise en page
+    // en encadrés, sinon deux colonnes de même hauteur se retrouvent collées
     const tc = await page.getTextContent();
-    const lignes = [];
-    tc.items.forEach(it => {
-      const t = (it.str || "").replace(/\s+/g," ").trim();
-      if(!t) return;
-      const y = Math.round(it.transform[5]);
-      const h = Math.round((it.height || 10) * 10) / 10;
-      let l = lignes.find(x => Math.abs(x.y - y) < 3.5);
-      if(!l){ l = { y, h, txt:"" }; lignes.push(l); }
-      l.txt = (l.txt ? l.txt + " " : "") + t;
-      l.h = Math.max(l.h, h);
-    });
-    lignes.sort((a,b) => b.y - a.y);
+    const vp = page.getViewport({ scale:1 });
+    const lignes = lignesOrdonnees(motsDeLaPage(tc.items, vp.height));
 
     // la page contient-elle des illustrations ?
     let illustree = false;
@@ -3826,15 +3817,15 @@ async function validerImport(bouton){
 
 
 /* =====================================================================
-   MODULE - Notes personnelles & flashcards extraites d'un PDF
+   MODULE - Notes personnelles & extraction quiz/flashcards depuis un PDF
    Tout se passe dans le navigateur : aucun serveur, aucune cle, aucun cout.
+   Le PDF d'Alycia contient deja un QCM, des vrai/faux et leurs corrections :
+   on les lit, on ne les invente pas.
    ===================================================================== */
 
 /* ---------------------------------------------------------------------
    1. NOTES PERSONNELLES
    Rangees dans U.notes, donc sauvegardees par sauver() dans users/{id}.
-   Elles n'existent que sur le compte de l'eleve : la fiche partagee
-   n'est jamais touchee.
    --------------------------------------------------------------------- */
 
 function mesNotes(){
@@ -3899,7 +3890,6 @@ ouvrirFiche = function(id){
   if(!f || !U) return;
   const article = document.querySelector("#zone .lecteur");
   if(!article) return;
-  // sous le titre : sur une fiche avec PDF, la fin de page est trop loin
   const titre = article.querySelector("h1");
   if(titre) titre.insertAdjacentHTML("afterend", htmlPanneauNote(f));
   else article.insertAdjacentHTML("afterbegin", htmlPanneauNote(f));
@@ -3917,11 +3907,95 @@ carteFiche = function(f, q, avecMatiere){
 
 
 /* ---------------------------------------------------------------------
-   2. FLASHCARDS EXTRAITES DU PDF, SANS SERVEUR
-   PDF.js lit le document dans le navigateur. On reconstitue les lignes
-   grace a la position verticale des fragments, puis on repere les
-   definitions. Alycia coche, corrige, valide : rien n'est automatique.
+   2. LECTURE DU PDF
+   PDF.js lit le document dans le navigateur. Les fragments d'une meme
+   ligne partagent la meme ordonnee : on les regroupe pour reconstituer
+   des lignes exploitables.
    --------------------------------------------------------------------- */
+
+/* Decoupage recursif de la page en blocs, puis en lignes, dans l'ordre de
+   lecture. Sans lui, deux encadres situes a la meme hauteur se retrouvent
+   colles sur une meme ligne : « 1.DEFINITION 4.LA DOUBLE HELICE ». */
+const TROU_H = 5;        // hauteur minimale d'une bande vide, en points
+const TROU_V = 6;        // largeur minimale d'une gouttiere verticale
+const PROFONDEUR = 8;
+
+function coupures(intervalles, minimum){
+  if(intervalles.length < 2) return { coupes:[], plusGrand:0 };
+  const tri = intervalles.slice().sort((a,b) => a[0] - b[0]);
+  const coupes = [];
+  let fin = tri[0][1], plusGrand = 0;
+  for(let i = 1; i < tri.length; i++){
+    const a = tri[i][0], b = tri[i][1], trou = a - fin;
+    if(trou >= minimum){ coupes.push((fin + a) / 2); if(trou > plusGrand) plusGrand = trou; }
+    if(b > fin) fin = b;
+  }
+  return { coupes, plusGrand };
+}
+
+/* On coupe dans la direction ou l'espace vide est le plus large : sinon les
+   lignes alignees de plusieurs encadres voisins font trancher a travers eux. */
+function decouperBloc(mots, profondeur, blocs){
+  if(!mots.length) return;
+  if(profondeur <= 0){ blocs.push(mots); return; }
+
+  const h = coupures(mots.map(m => [m.top, m.bottom]), TROU_H);
+  const v = coupures(mots.map(m => [m.x0, m.x1]), TROU_V);
+  if(!h.coupes.length && !v.coupes.length){ blocs.push(mots); return; }
+
+  const vertical = v.coupes.length && v.plusGrand >= h.plusGrand;
+  const c = vertical ? v.coupes : h.coupes;
+
+  const groupes = Array.from({ length: c.length + 1 }, () => []);
+  mots.forEach(m => {
+    const val = vertical ? (m.x0 + m.x1) / 2 : (m.top + m.bottom) / 2;
+    let i = 0;
+    while(i < c.length && val >= c[i]) i++;
+    groupes[i].push(m);
+  });
+  groupes.forEach(g => decouperBloc(g, profondeur - 1, blocs));
+}
+
+function lignesDuBloc(mots){
+  const paquets = [];
+  mots.forEach(m => {
+    let p = paquets.find(x => Math.abs(x.y - m.top) <= 3);
+    if(!p){ p = { y:m.top, mots:[] }; paquets.push(p); }
+    p.mots.push(m);
+  });
+  return paquets
+    .sort((a,b) => a.y - b.y)
+    .map(p => ({
+      y: p.y,
+      h: Math.max.apply(null, p.mots.map(m => m.h || 10)),
+      txt: p.mots.sort((a,b) => a.x0 - b.x0).map(m => m.s).join(" ").replace(/\s+/g," ").trim()
+    }))
+    .filter(l => l.txt);
+}
+
+/* Fragments PDF.js -> boites positionnees, origine en haut a gauche */
+function motsDeLaPage(items, hauteur){
+  const out = [];
+  items.forEach(it => {
+    const t = (it.str || "").replace(/\s+/g," ").trim();
+    if(!t) return;
+    const x = it.transform[4], y = it.transform[5];
+    const larg = it.width || 0, haut = it.height || 10;
+    out.push({ s:t, x0:x, x1:x + larg, top:hauteur - y - haut, bottom:hauteur - y, h:haut });
+  });
+  return out;
+}
+
+/* Lignes d'une page, dans l'ordre de lecture. Pas de tri global apres coup :
+   la recursion produit deja le bon ordre, le retrier le detruirait. */
+function lignesOrdonnees(mots){
+  if(!mots.length) return [];
+  const blocs = [];
+  decouperBloc(mots, PROFONDEUR, blocs);
+  const out = [];
+  blocs.forEach(b => lignesDuBloc(b).forEach(l => out.push(l)));
+  return out;
+}
 
 const PDFJS_SRC    = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 const PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -3943,8 +4017,6 @@ function chargerPdfJs(){
   return pdfjsPret;
 }
 
-/* Reconstitue les lignes : les fragments d'une meme ligne partagent la
-   meme ordonnee. Sans ca, tout le PDF arrive comme un seul pave. */
 async function lignesDuPdf(url, surAvancement){
   const lib = await chargerPdfJs();
   const doc = await lib.getDocument(url).promise;
@@ -3955,138 +4027,232 @@ async function lignesDuPdf(url, surAvancement){
     const page = await doc.getPage(p);
     const contenu = await page.getTextContent();
 
-    const parY = new Map();
-    contenu.items.forEach(it => {
-      if(!it.str || !it.str.trim()) return;
-      const y = Math.round(it.transform[5]);        // ordonnee du fragment
-      let cle = null;
-      for(const k of parY.keys()){ if(Math.abs(k - y) <= 2){ cle = k; break; } }
-      if(cle === null){ cle = y; parY.set(cle, []); }
-      parY.get(cle).push({ x: it.transform[4], s: it.str });
-    });
-
-    [...parY.entries()]
-      .sort((a,b) => b[0] - a[0])                   // de haut en bas
-      .forEach(([, frags]) => {
-        const t = frags.sort((a,b) => a.x - b.x).map(f => f.s).join("").replace(/\s+/g," ").trim();
-        if(t) lignes.push(t);
-      });
+    const vp = page.getViewport({ scale:1 });
+    lignesOrdonnees(motsDeLaPage(contenu.items, vp.height))
+      .forEach(l => lignes.push(l.txt));
+    page.cleanup();
   }
   return lignes;
 }
 
-/* Lignes parasites : numeros de page, en-tetes repetes, puces seules */
-function lignesUtiles(lignes){
-  const compte = {};
-  lignes.forEach(l => { compte[l] = (compte[l] || 0) + 1; });
-  return lignes.filter(l => {
-    if(l.length < 12) return false;
-    if(/^\d+$/.test(l)) return false;
-    if(/^page\s+\d+/i.test(l)) return false;
-    if(compte[l] >= 3) return false;               // en-tete ou pied de page
-    return true;
-  });
+
+/* ---------------------------------------------------------------------
+   3. LECTURE DU QCM ET DES CORRECTIONS
+   Format attendu, celui des fiches d'Alycia :
+     Partie 1 – QCM        1. énoncé / A. … B. … C. … D. …
+     Partie 2 – Vrai ou Faux
+     Partie 3 – Questions courtes
+     Correction du QCM     1. énoncé / B - explication
+     Correction du vrai ou faux   11. énoncé / Vrai → explication
+     Correction des questions     21. énoncé / Réponse attendue : …
+   --------------------------------------------------------------------- */
+
+const RE_NUM  = /^(\d{1,2})\s*[.)]\s*(.*)$/;
+const RE_OPT  = /^([A-F])\s*[.)]\s+(.+)$/;
+const RE_CORR = /^([A-F])\s*[-–—]\s*(.+)$/;
+const RE_VF   = /^(Vrai|Faux)\s*[→>:\-–—]*\s*(.*)$/i;
+const RE_REP  = /^R[ée]ponse attendue\s*:?\s*(.*)$/i;
+
+/* Lignes situées entre deux marqueurs, bornes exclues */
+function zoneEntre(lignes, debut, fin){
+  let i = null, j = null;
+  for(let k = 0; k < lignes.length; k++){
+    if(i === null && debut.test(lignes[k])) i = k + 1;
+    else if(i !== null && fin && fin.test(lignes[k])){ j = k; break; }
+  }
+  if(i === null) return [];
+  return lignes.slice(i, j === null ? lignes.length : j);
 }
+
+/* Regroupe par numéro : « 1. … » jusqu'au « 2. … » suivant */
+function blocsNumerotes(lignes){
+  const blocs = [];
+  let cour = null;
+  lignes.forEach(l => {
+    const m = l.match(RE_NUM);
+    if(m){
+      cour = { n: parseInt(m[1], 10), lignes: m[2] ? [m[2]] : [] };
+      blocs.push(cour);
+    }else if(cour){
+      cour.lignes.push(l);
+    }
+  });
+  return blocs;
+}
+
+function lireQcm(lignes){
+  const out = [];
+  blocsNumerotes(lignes).forEach(b => {
+    const enonce = [], options = [];
+    b.lignes.forEach(l => {
+      const m = l.match(RE_OPT);
+      if(m) options.push(m[2].trim());
+      else if(options.length) options[options.length-1] += " " + l;   // option sur deux lignes
+      else enonce.push(l);
+    });
+    if(options.length >= 2) out.push({ n:b.n, q:enonce.join(" ").trim(), o:options });
+  });
+  return out;
+}
+
+function lireCorrectionsQcm(lignes){
+  const out = {};
+  blocsNumerotes(lignes).forEach(b => {
+    let lettre = null; const expl = [];
+    b.lignes.forEach(l => {
+      const m = l.match(RE_CORR);
+      if(m && lettre === null){ lettre = m[1]; expl.push(m[2]); }
+      else if(lettre !== null) expl.push(l);
+    });
+    if(lettre) out[b.n] = { lettre, e: expl.join(" ").trim() };
+  });
+  return out;
+}
+
+function lireEnonces(lignes){
+  const out = {};
+  blocsNumerotes(lignes).forEach(b => { out[b.n] = b.lignes.join(" ").trim(); });
+  return out;
+}
+
+function lireCorrectionsVf(lignes){
+  const out = {};
+  blocsNumerotes(lignes).forEach(b => {
+    let verdict = null; const expl = [];
+    b.lignes.forEach(l => {
+      const m = l.match(RE_VF);
+      if(m && verdict === null){ verdict = m[1].toLowerCase(); if(m[2]) expl.push(m[2]); }
+      else if(verdict !== null) expl.push(l);
+    });
+    if(verdict) out[b.n] = { vrai: verdict === "vrai", e: expl.join(" ").trim() };
+  });
+  return out;
+}
+
+function lireCorrectionsCourtes(lignes){
+  const out = {};
+  blocsNumerotes(lignes).forEach(b => {
+    const rep = []; let dans = false;
+    b.lignes.forEach(l => {
+      const m = l.match(RE_REP);
+      if(m){ dans = true; if(m[1]) rep.push(m[1]); }
+      else if(dans) rep.push(l);
+    });
+    if(rep.length) out[b.n] = rep.join(" ").trim();
+  });
+  return out;
+}
+
+/* Assemblage : énoncés + corrections → questions prêtes pour DB.questions */
+function extraireQuiz(lignes){
+  const qcm     = lireQcm(zoneEntre(lignes, /Partie\s*1|QCM\s*\(/i, /Partie\s*2/i));
+  const vf      = lireEnonces(zoneEntre(lignes, /Partie\s*2/i, /Partie\s*3/i));
+  const courtes = lireEnonces(zoneEntre(lignes, /Partie\s*3/i, /Correction/i));
+  const cq      = lireCorrectionsQcm(zoneEntre(lignes, /Correction du QCM/i, /Correction du vrai/i));
+  const cvf     = lireCorrectionsVf(zoneEntre(lignes, /Correction du vrai/i, /Correction des questions/i));
+  const cc      = lireCorrectionsCourtes(zoneEntre(lignes, /Correction des questions/i, null));
+
+  const questions = [], cartes = [], orphelines = [];
+
+  qcm.forEach(q => {
+    const c = cq[q.n];
+    if(!c){ orphelines.push("QCM n°" + q.n + " : pas de correction trouvée"); return; }
+    const r = c.lettre.charCodeAt(0) - 65;
+    if(r < 0 || r >= q.o.length){ orphelines.push("QCM n°" + q.n + " : réponse « " + c.lettre + " » hors des options"); return; }
+    questions.push({ q:q.q, o:q.o, r, e:c.e, origine:"QCM n°" + q.n });
+  });
+
+  Object.keys(vf).forEach(n => {
+    const c = cvf[n];
+    if(!c){ orphelines.push("Vrai/Faux n°" + n + " : pas de correction trouvée"); return; }
+    questions.push({ q:vf[n], o:["Vrai","Faux"], r: c.vrai ? 0 : 1, e:c.e, origine:"Vrai/Faux n°" + n });
+  });
+
+  Object.keys(courtes).forEach(n => {
+    const rep = cc[n];
+    if(!rep){ orphelines.push("Question courte n°" + n + " : pas de réponse trouvée"); return; }
+    cartes.push({ recto:courtes[n], verso:rep, source:"Question courte n°" + n });
+  });
+
+  return { questions, cartes, orphelines };
+}
+
+
+/* ---------------------------------------------------------------------
+   4. REPLI : reperage de definitions
+   Pour une fiche sans QCM, on retombe sur les tournures « Terme : … ».
+   --------------------------------------------------------------------- */
 
 const RE_DEUX_POINTS = /^[•\-–—*\s]*(.{3,80}?)\s*[:：]\s+(.{15,500})$/;
-const RE_VERBE = new RegExp(
-  "^[•\\-–—*\\s]*(.{3,70}?)\\s+" +
-  "(?:est|sont|désigne|désignent|correspond à|correspondent à|se définit comme|" +
-  "permet de|permettent de|sert à|servent à|assure|assurent)\\s+(.{15,500})$", "i");
-
-function estTitre(l){
-  return l.length <= 70 && !/[.;:]$/.test(l) && !/^[•\-–—*]/.test(l);
-}
 
 function nettoyer(t){
   return String(t).replace(/\s+/g," ").replace(/^[•\-–—*\s]+/,"").trim();
 }
 
-/* Coeur de l'extraction */
-function proposerCartes(lignes){
-  const cartes = [];
-  const vus = new Set();
-  let section = "";
-
+function cartesParDefinitions(lignes){
+  const cartes = [], vus = new Set();
   lignes.forEach((brute, i) => {
     const l = nettoyer(brute);
-
-    let m = l.match(RE_DEUX_POINTS) || l.match(RE_VERBE);
-    if(m){
-      const recto = nettoyer(m[1]);
-      const verso = nettoyer(m[2]);
-      const cle = recto.toLowerCase();
-      if(recto.length >= 3 && verso.length >= 15 && !vus.has(cle)){
-        vus.add(cle);
-        cartes.push({
-          id: "tmp-" + i,
-          recto: recto.endsWith("?") ? recto : recto + " ?",
-          verso: verso,
-          source: section
-        });
-      }
-      return;
-    }
-
-    // Titre suivi d'une ligne de contenu : on en fait une carte large
-    if(estTitre(l)){
-      section = l;
-      const suite = nettoyer(lignes[i+1] || "");
-      if(suite.length >= 40 && !suite.match(RE_DEUX_POINTS) && !estTitre(suite)){
-        const cle = l.toLowerCase();
-        if(!vus.has(cle)){
-          vus.add(cle);
-          cartes.push({
-            id: "tmp-t" + i,
-            recto: "Que retenir sur : " + l + " ?",
-            verso: suite.slice(0, 400),
-            source: section
-          });
-        }
-      }
-    }
+    if(l.length < 20) return;
+    const m = l.match(RE_DEUX_POINTS);
+    if(!m) return;
+    const recto = nettoyer(m[1]), verso = nettoyer(m[2]);
+    const cle = recto.toLowerCase();
+    if(recto.length < 3 || verso.length < 15 || vus.has(cle)) return;
+    if(/^\d+$/.test(recto)) return;
+    vus.add(cle);
+    cartes.push({ recto: recto.endsWith("?") ? recto : recto + " ?", verso, source:"définition" });
   });
-
   return cartes;
 }
 
-let CartesProposees = [];
 
-async function genererCartesPdf(ficheId){
+/* ---------------------------------------------------------------------
+   5. INTERFACE : extraction, relecture, enregistrement
+   --------------------------------------------------------------------- */
+
+let Extraction = { questions:[], cartes:[], orphelines:[], ficheId:null };
+
+async function extraireDuPdf(ficheId){
   const f = DB.fiches.find(x => x.id === ficheId);
   if(!f) return;
   if(!f.pdf) return toast("Cette fiche n'a pas de document PDF.","ko");
 
   modale(`
-    <p class="eyebrow">Flashcards</p>
+    <p class="eyebrow">Extraction</p>
     <h2 style="margin:8px 0 14px">${esc(f.t)}</h2>
     <p id="gen-etat" class="small muted">Ouverture du document…</p>
     <p class="tiny muted" style="margin-top:14px;line-height:1.55">
-      Le PDF est lu dans ton navigateur. Les définitions repérées te sont
-      proposées : rien n'est enregistré tant que tu n'as pas validé.
+      Le PDF est lu dans ton navigateur. Le QCM, les vrai/faux et leurs
+      corrections sont repris tels qu'ils sont écrits : rien n'est inventé,
+      et rien n'est enregistré tant que tu n'as pas validé.
     </p>`);
 
   const dire = t => { const e = $("#gen-etat"); if(e) e.textContent = t; };
 
   try{
-    const brutes = await lignesDuPdf(f.pdf, dire);
+    const lignes = await lignesDuPdf(f.pdf, dire);
     dire("Analyse du contenu…");
-    const lignes = lignesUtiles(brutes);
 
-    if(lignes.length < 3){
+    if(lignes.length < 5){
       fermerModale();
       return toast("Ce PDF ne contient pas de texte sélectionnable : il est probablement scanné en image.","ko");
     }
 
-    const cartes = proposerCartes(lignes);
-    if(!cartes.length){
-      fermerModale();
-      return toast("Aucune définition repérée. Vérifie que la fiche utilise des tournures du type « Terme : explication ».","ko");
+    const r = extraireQuiz(lignes);
+    if(!r.questions.length && !r.cartes.length){
+      // pas de QCM dans ce document : on tente les définitions
+      r.cartes = cartesParDefinitions(lignes);
     }
 
-    CartesProposees = cartes;
+    if(!r.questions.length && !r.cartes.length){
+      fermerModale();
+      return toast("Rien d'exploitable trouvé. Ce PDF ne contient ni QCM ni définitions repérables.","ko");
+    }
+
+    Extraction = { questions:r.questions, cartes:r.cartes, orphelines:r.orphelines, ficheId };
     fermerModale();
-    modaleSelectionCartes(f);
+    modaleRelecture(f);
 
   }catch(e){
     fermerModale();
@@ -4094,65 +4260,127 @@ async function genererCartesPdf(ficheId){
   }
 }
 
-function modaleSelectionCartes(f){
-  const dejaLa = (f.cartes || []).length;
+function modaleRelecture(f){
+  const E = Extraction;
+  const lettres = ["A","B","C","D","E","F"];
+
+  const blocQuestion = (q, i) => `
+    <div class="carte" style="padding:14px;margin-bottom:10px">
+      <label class="rang" style="gap:8px;align-items:center;margin-bottom:10px">
+        <input type="checkbox" class="ex-q" data-i="${i}" checked style="width:auto">
+        <span class="tiny muted">${esc(q.origine)}</span>
+      </label>
+      <div class="champ" style="margin-bottom:8px">
+        <label class="tiny">Énoncé</label>
+        <textarea class="ex-q-txt" data-i="${i}" style="min-height:52px">${esc(q.q)}</textarea>
+      </div>
+      <p class="tiny muted" style="margin-bottom:6px">Réponses — la bonne est en vert</p>
+      ${q.o.map((o,j) => `<p class="tiny" style="margin-bottom:3px;color:${j===q.r?"var(--vert)":"var(--doux)"}">
+        <b>${lettres[j]}.</b> ${esc(o)}</p>`).join("")}
+      <div class="champ" style="margin:10px 0 0">
+        <label class="tiny">Explication</label>
+        <textarea class="ex-q-exp" data-i="${i}" style="min-height:52px">${esc(q.e)}</textarea>
+      </div>
+    </div>`;
+
+  const blocCarte = (c, i) => `
+    <div class="carte" style="padding:14px;margin-bottom:10px">
+      <label class="rang" style="gap:8px;align-items:center;margin-bottom:10px">
+        <input type="checkbox" class="ex-c" data-i="${i}" checked style="width:auto">
+        <span class="tiny muted">${esc(c.source || "")}</span>
+      </label>
+      <div class="champ" style="margin-bottom:8px">
+        <label class="tiny">Recto</label>
+        <textarea class="ex-c-r" data-i="${i}" style="min-height:48px">${esc(c.recto)}</textarea>
+      </div>
+      <div class="champ" style="margin-bottom:0">
+        <label class="tiny">Verso</label>
+        <textarea class="ex-c-v" data-i="${i}" style="min-height:60px">${esc(c.verso)}</textarea>
+      </div>
+    </div>`;
+
   modale(`
-    <p class="eyebrow">Flashcards proposées</p>
+    <p class="eyebrow">Relecture avant enregistrement</p>
     <h2 style="margin:8px 0 6px">${esc(f.t)}</h2>
-    <p class="small muted" style="margin-bottom:6px">
-      ${CartesProposees.length} proposition${CartesProposees.length>1?"s":""}.
-      Décoche ce que tu ne veux pas, corrige librement les textes.
+    <p class="small muted" style="margin-bottom:12px">
+      ${E.questions.length} question${E.questions.length>1?"s":""} de quiz ·
+      ${E.cartes.length} flashcard${E.cartes.length>1?"s":""}.
+      Les questions iront dans « ${esc(nomMat(f.m))} · ${esc(f.ch)} ».
     </p>
-    ${dejaLa ? `<p class="tiny muted" style="margin-bottom:14px">Cette fiche a déjà ${dejaLa} carte${dejaLa>1?"s":""} : les nouvelles s'y ajouteront.</p>` : ""}
-    <div class="rang" style="gap:8px;margin:12px 0 16px">
-      <button class="btn mini fantome" type="button" onclick="cocherToutesCartes(true)">Tout cocher</button>
-      <button class="btn mini fantome" type="button" onclick="cocherToutesCartes(false)">Tout décocher</button>
+    ${E.orphelines.length ? `<details class="carte" style="padding:10px 14px;margin-bottom:14px">
+      <summary class="tiny muted" style="cursor:pointer">${E.orphelines.length} élément(s) écarté(s) faute de correction</summary>
+      <ul class="tiny muted" style="margin:8px 0 0 16px;line-height:1.6">
+        ${E.orphelines.map(o => `<li>${esc(o)}</li>`).join("")}</ul></details>` : ""}
+    <div class="rang" style="gap:8px;margin-bottom:14px">
+      <button class="btn mini fantome" type="button" onclick="cocherExtraction(true)">Tout cocher</button>
+      <button class="btn mini fantome" type="button" onclick="cocherExtraction(false)">Tout décocher</button>
     </div>
-    <div style="max-height:52vh;overflow:auto;padding-right:6px">
-      ${CartesProposees.map((c,i) => `
-        <div class="carte" style="padding:14px;margin-bottom:10px">
-          <label class="rang" style="gap:8px;align-items:center;margin-bottom:10px">
-            <input type="checkbox" class="carte-choix" data-i="${i}" checked style="width:auto">
-            <span class="tiny muted">${esc(c.source || "sans section")}</span>
-          </label>
-          <div class="champ" style="margin-bottom:8px">
-            <label class="tiny">Recto</label>
-            <textarea class="carte-recto" data-i="${i}" style="min-height:52px">${esc(c.recto)}</textarea>
-          </div>
-          <div class="champ" style="margin-bottom:0">
-            <label class="tiny">Verso</label>
-            <textarea class="carte-verso" data-i="${i}" style="min-height:64px">${esc(c.verso)}</textarea>
-          </div>
-        </div>`).join("")}
+    <div style="max-height:50vh;overflow:auto;padding-right:6px">
+      ${E.questions.length ? `<p class="eyebrow" style="margin-bottom:10px">Questions de quiz</p>
+        ${E.questions.map(blocQuestion).join("")}` : ""}
+      ${E.cartes.length ? `<p class="eyebrow" style="margin:18px 0 10px">Flashcards</p>
+        ${E.cartes.map(blocCarte).join("")}` : ""}
     </div>
-    <button class="btn primaire large" type="button" style="margin-top:16px" onclick="enregistrerCartes('${f.id}')">Enregistrer les cartes cochées</button>
+    <button class="btn primaire large" type="button" style="margin-top:16px" onclick="enregistrerExtraction()">Enregistrer la sélection</button>
     <button class="btn fantome" type="button" style="width:100%;margin-top:8px" onclick="fermerModale()">Annuler</button>`, true);
 }
 
-function cocherToutesCartes(etat){
-  document.querySelectorAll(".carte-choix").forEach(c => { c.checked = etat; });
+function cocherExtraction(etat){
+  document.querySelectorAll(".ex-q, .ex-c").forEach(c => { c.checked = etat; });
 }
 
-function enregistrerCartes(ficheId){
-  const f = DB.fiches.find(x => x.id === ficheId);
+function valeur(selecteur, i){
+  const el = document.querySelector(selecteur + '[data-i="' + i + '"]');
+  return el ? el.value.trim() : "";
+}
+
+async function enregistrerExtraction(){
+  const E = Extraction;
+  const f = DB.fiches.find(x => x.id === E.ficheId);
   if(!f) return;
-  const gardees = [];
-  document.querySelectorAll(".carte-choix").forEach(choix => {
+
+  const nouvellesQuestions = [];
+  document.querySelectorAll(".ex-q").forEach(choix => {
+    if(!choix.checked) return;
+    const i = choix.dataset.i, src = E.questions[i];
+    const enonce = valeur(".ex-q-txt", i);
+    if(!enonce) return;
+    nouvellesQuestions.push({
+      id: uid("q"), m: f.m, ch: f.ch,
+      q: enonce, o: src.o.slice(), r: src.r, e: valeur(".ex-q-exp", i)
+    });
+  });
+
+  const nouvellesCartes = [];
+  document.querySelectorAll(".ex-c").forEach(choix => {
     if(!choix.checked) return;
     const i = choix.dataset.i;
-    const r = (document.querySelector('.carte-recto[data-i="' + i + '"]') || {}).value || "";
-    const v = (document.querySelector('.carte-verso[data-i="' + i + '"]') || {}).value || "";
-    if(r.trim() && v.trim()){
-      const src = CartesProposees[i] && CartesProposees[i].source;
-      gardees.push({ r:r.trim(), v:v.trim(), src: f.t + (src ? " · " + src : "") });
-    }
+    const r = valeur(".ex-c-r", i), v = valeur(".ex-c-v", i);
+    if(r && v) nouvellesCartes.push({ r, v, src: f.t });
   });
-  if(!gardees.length) return toast("Aucune carte cochée.","ko");
 
-  f.cartes = (f.cartes || []).concat(gardees);
-  sauverContenu()
-    .then(() => { fermerModale(); toast(gardees.length + " carte" + (gardees.length>1?"s":"") + " enregistrée" + (gardees.length>1?"s":"") + ".","ok"); App.aller("dev"); })
-    .catch(e => toast("Publication impossible : " + e.message,"ko"));
+  if(!nouvellesQuestions.length && !nouvellesCartes.length)
+    return toast("Rien de coché.","ko");
+
+  const avantQ = DB.questions.length;
+  DB.questions.push(...nouvellesQuestions);
+  const avantC = (f.cartes || []).slice();
+  f.cartes = avantC.concat(nouvellesCartes);
+
+  try{
+    await sauverContenu();
+    fermerModale();
+    Extraction = { questions:[], cartes:[], orphelines:[], ficheId:null };
+    const bouts = [];
+    if(nouvellesQuestions.length) bouts.push(nouvellesQuestions.length + " question" + (nouvellesQuestions.length>1?"s":""));
+    if(nouvellesCartes.length) bouts.push(nouvellesCartes.length + " flashcard" + (nouvellesCartes.length>1?"s":""));
+    toast(bouts.join(" et ") + " enregistrée(s).","ok");
+    App.aller("dev");
+  }catch(e){
+    DB.questions.length = avantQ;          // on ne laisse rien à moitié fait
+    f.cartes = avantC;
+    toast("Publication impossible : " + e.message,"ko");
+  }
 }
 
 /* Les cartes enregistrees rejoignent le jeu de flashcards */
@@ -4180,10 +4408,14 @@ editFiche = function(id){
   const nb = (f.cartes || []).length;
   champ.closest(".champ").insertAdjacentHTML("beforeend", `
     <div class="rang" style="gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap">
-      <button type="button" class="btn mini" onclick="genererCartesPdf('${id}')">Extraire des flashcards de ce PDF</button>
+      <button type="button" class="btn mini" onclick="extraireDuPdf('${id}')">Extraire le quiz et les flashcards</button>
       ${nb ? `<span class="tiny muted">${nb} carte${nb>1?"s":""} déjà enregistrée${nb>1?"s":""}</span>
-              <button type="button" class="btn mini fantome" onclick="viderCartes('${id}')">Toutes les retirer</button>` : ""}
-    </div>`);
+              <button type="button" class="btn mini fantome" onclick="viderCartes('${id}')">Retirer les cartes</button>` : ""}
+    </div>
+    <p class="tiny muted" style="margin-top:8px;line-height:1.55">
+      Reprend le QCM, les vrai/faux et les questions courtes présents dans le PDF,
+      avec leurs corrections. Tu relis tout avant enregistrement.
+    </p>`);
 };
 
 function viderCartes(ficheId){
@@ -4194,6 +4426,146 @@ function viderCartes(ficheId){
     .then(() => { fermerModale(); toast("Cartes retirées.","ok"); App.aller("dev"); })
     .catch(e => toast("Publication impossible : " + e.message,"ko"));
 }
+
+
+/* ---------------------------------------------------------------------
+   6. IMPORT : deux rendus au choix
+   - « texte »  : transcription structuree, recherchable, quiz et flashcards
+                  possibles, mais la mise en page d'origine est perdue.
+   - « images » : chaque page est rendue telle quelle. Rien n'est extrait,
+                  donc rien ne peut etre mal decoupe. En contrepartie le
+                  contenu n'est ni recherchable ni exploitable pour les quiz.
+   --------------------------------------------------------------------- */
+
+const _modaleImportPdfOrigine = modaleImportPdf;
+modaleImportPdf = function(){
+  _modaleImportPdfOrigine();
+  const mode = document.getElementById("ip-mode");
+  if(!mode) return;
+  mode.closest(".champ").insertAdjacentHTML("beforebegin", `
+    <div class="champ">
+      <label>Rendu de la fiche</label>
+      <select id="ip-rendu" onchange="majRenduImport()">
+        <option value="texte">Transcription en texte — recherchable, quiz possibles</option>
+        <option value="images">Pages en images — mise en page conservée à l'identique</option>
+      </select>
+      <p class="tiny muted" id="ip-aide-rendu" style="margin-top:7px;line-height:1.55">
+        Le texte est extrait et remis en forme. La mise en page d'origine
+        (encadrés, couleurs, colonnes) n'est pas conservée.
+      </p>
+    </div>`);
+};
+
+function majRenduImport(){
+  const images = (document.getElementById("ip-rendu") || {}).value === "images";
+  const aide = document.getElementById("ip-aide-rendu");
+  if(aide) aide.textContent = images
+    ? "Chaque page est enregistrée telle quelle, en image. Rien n'est extrait : aucun risque de découpage bancal, mais la fiche n'est pas recherchable et ne sert pas aux quiz."
+    : "Le texte est extrait et remis en forme. La mise en page d'origine (encadrés, couleurs, colonnes) n'est pas conservée.";
+  // les options propres à la transcription n'ont plus de sens en mode image
+  const img = document.getElementById("ip-img");
+  if(img){
+    img.disabled = images;
+    const l = img.closest("label");
+    if(l) l.style.opacity = images ? ".4" : "";
+  }
+  const mode = document.getElementById("ip-mode");
+  if(mode){
+    const parTitre = mode.querySelector('option[value="titre"]');
+    if(parTitre){
+      parTitre.disabled = images;                 // aucun titre détecté sans texte
+      if(images && mode.value === "titre") mode.value = "page";
+    }
+  }
+}
+
+/* Rendu de toutes les pages demandées, sans aucune extraction de texte */
+async function rendreLesPages(fichier, conf, progres){
+  const donnees = await fichier.arrayBuffer();
+  const { doc } = await ouvrirDocument(donnees);
+  const premiere = Math.max(1, conf.de || 1);
+  const derniere = Math.min(doc.numPages, conf.a || doc.numPages);
+  const pages = [];
+  for(let n = premiere; n <= derniere; n++){
+    if(progres) progres(n - premiere + 1, derniere - premiere + 1, n);
+    await patienter();
+    const page = await doc.getPage(n);
+    pages.push({ n, image: await rendrePage(page, 1500) });
+    page.cleanup();
+  }
+  return pages;
+}
+
+/* Pages rendues -> fiches, selon le découpage choisi */
+function fichesDepuisImages(pages, mode, titreDefaut){
+  const base = titreDefaut || "Fiche importée";
+  if(mode === "page"){
+    return pages.map(p => ({ t: base + " — page " + p.n, s:[], img:[p.image], pages:[p.n] }));
+  }
+  return [{ t: base, s:[], img: pages.map(p => p.image), pages: pages.map(p => p.n) }];
+}
+
+/* On remplace lancerImportPdf pour aiguiller vers l'un ou l'autre rendu */
+lancerImportPdf = async function(e){
+  e.preventDefault();
+  const fichier = $("#ip-fichier").files[0];
+  if(!fichier) return;
+  const etat = $("#ip-etat");
+  const conf = {
+    m: $("#ip-m").value, ch: $("#ip-ch").value.trim(), mode: $("#ip-mode").value,
+    titre: $("#ip-titre").value.trim(), img: $("#ip-img").checked, prem: $("#ip-prem").checked,
+    rendu: ($("#ip-rendu") || { value:"texte" }).value,
+    de: parseInt($("#ip-de").value, 10) || 1,
+    a:  parseInt($("#ip-a").value, 10) || 0
+  };
+  const bouton = e.target.querySelector('button[type=submit]');
+  if(bouton){ bouton.disabled = true; bouton.textContent = "Lecture en cours…"; }
+
+  try{
+    let fiches, nbPages;
+
+    if(conf.rendu === "images"){
+      etat.textContent = "Préparation du rendu…";
+      const pages = await rendreLesPages(fichier, conf,
+        (i, total, page) => { etat.textContent = `Rendu ${i}/${total} (page ${page} du document)…`; });
+      if(!pages.length) return toast("Aucune page à rendre sur cette plage.","ko");
+      fiches = fichesDepuisImages(pages, conf.mode, conf.titre || fichier.name.replace(/\.pdf$/i,""));
+      nbPages = pages.length;
+
+    }else{
+      etat.textContent = "Chargement de la bibliothèque PDF…";
+      const pages = await analyserPdf(fichier, conf.img,
+        (i, total, page) => { etat.textContent = `Lecture ${i}/${total} (page ${page} du document)…`; },
+        conf.de, conf.a);
+      fiches = structurerPdf(pages, conf.mode, conf.titre || fichier.name.replace(/\.pdf$/i,""));
+      nbPages = pages.length;
+      if(!fiches.length)
+        return toast("Aucun texte exploitable. Ce PDF est peut-être un scan : essaie le rendu en images.","ko");
+    }
+
+    ImportEnCours = { conf, fiches, pages: nbPages };
+    fermerModale();
+    apercuImport();
+
+  }catch(err){
+    console.error("import PDF", err);
+    etat.textContent = "";
+    if(bouton){ bouton.disabled = false; bouton.textContent = "Analyser le PDF"; }
+    toast("Lecture impossible : " + err.message, "ko");
+  }
+};
+
+/* Une fiche en images n'a pas de sections : on l'annonce clairement
+   dans la liste plutot que d'afficher « 0 sections · 0 points clés ». */
+const _carteFicheAvantImages = carteFiche;
+carteFiche = function(f, q, avecMatiere){
+  let html = _carteFicheAvantImages(f, q, avecMatiere);
+  if(!f.pdf && !(f.s || []).length && (f.img || []).length){
+    html = html.replace("0 sections · 0 points clés",
+      f.img.length + " page" + (f.img.length > 1 ? "s" : "") + " en image");
+  }
+  return html;
+};
 
 </script>
 </body>
