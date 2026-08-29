@@ -3872,21 +3872,24 @@ function effacerNote(ficheId){
 function htmlPanneauNote(f){
   const n = maNote(f.id);
   return `
-    <section class="carte" style="margin-top:26px;padding:18px 20px">
-      <div class="rang" style="justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px">
-        <div class="rang" style="gap:8px;align-items:center">
+    <details class="carte" id="bloc-note" style="margin:0 0 24px;padding:14px 18px" ${n ? "open" : ""}>
+      <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <span class="rang" style="gap:8px;align-items:center">
           <span class="pastille bleu">Ma note</span>
-          <span class="tiny muted">visible seulement par toi</span>
-        </div>
-        <span id="note-etat" class="tiny muted">${n ? "Enregistré" : ""}</span>
-      </div>
+          <span class="tiny muted">${n ? "note enregistrée sur cette fiche" : "ajouter une note personnelle"}</span>
+        </span>
+        <span id="note-etat" class="tiny muted"></span>
+      </summary>
+      <p class="tiny muted" style="margin:12px 0 8px;line-height:1.55">
+        Visible seulement sur ton compte. La fiche reste inchangée pour les autres.
+      </p>
       <textarea id="note-zone" placeholder="Ce que tu n'as pas compris, un moyen mnémotechnique, un renvoi vers ton cours…"
         style="min-height:110px;width:100%"
         oninput="saisirNote('${f.id}', this.value)">${esc(n)}</textarea>
       <div class="rang" style="gap:8px;margin-top:10px">
         <button class="btn mini fantome" type="button" onclick="effacerNote('${f.id}')">Effacer ma note</button>
       </div>
-    </section>`;
+    </details>`;
 }
 
 const _ouvrirFicheOrigine = ouvrirFiche;
@@ -3896,7 +3899,10 @@ ouvrirFiche = function(id){
   if(!f || !U) return;
   const article = document.querySelector("#zone .lecteur");
   if(!article) return;
-  article.insertAdjacentHTML("beforeend", htmlPanneauNote(f));
+  // sous le titre : sur une fiche avec PDF, la fin de page est trop loin
+  const titre = article.querySelector("h1");
+  if(titre) titre.insertAdjacentHTML("afterend", htmlPanneauNote(f));
+  else article.insertAdjacentHTML("afterbegin", htmlPanneauNote(f));
 };
 
 const _carteFicheOrigine = carteFiche;
