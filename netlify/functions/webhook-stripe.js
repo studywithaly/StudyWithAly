@@ -72,12 +72,18 @@ function finDePeriode(sub, plan){
   return Date.now() + jours * 86400000;
 }
 
-async function accorderAbonnement(uid, plan, finMs, statut, idAbo){
+async function accorderAbonnement(uid, plan, finMs, statut, idAbo, renouvelle){
   if(!Number.isFinite(finMs)){
     throw new Error("date de fin invalide pour " + uid);
   }
   await db.collection("droits").doc(uid).set({
-    abo: { plan, fin: finMs, statut, stripeSub: idAbo || null },
+    abo: {
+      plan, fin: finMs, statut, stripeSub: idAbo || null,
+      // false quand le client a annulé : l'accès court jusqu'à l'échéance
+      // mais aucun prélèvement ne suivra. Sans cette information le site
+      // annonce un renouvellement qui n'aura pas lieu.
+      renouvelle: renouvelle !== false
+    },
     maj: Date.now()
   }, { merge:true });
 }
@@ -131,7 +137,8 @@ exports.handler = async (event) => {
         }
         if(type === "abo" && s.subscription){
           const sub = await stripe.subscriptions.retrieve(s.subscription);
-          await accorderAbonnement(uid, ref, finDePeriode(sub, ref), "actif", sub.id);
+          await accorderAbonnement(uid, ref, finDePeriode(sub, ref), "actif", sub.id,
+            !sub.cancel_at_period_end);
           await enregistrerVente({ uid, type:"abo", ref, montant:s.amount_total/100, session:s.id });
         }
         break;
@@ -145,7 +152,8 @@ exports.handler = async (event) => {
         const uid = (sub.metadata || {}).uid;
         if(!uid) break;
         const plan = sub.metadata.plan || "mensuel";
-        await accorderAbonnement(uid, plan, finDePeriode(sub, plan), "actif", sub.id);
+        await accorderAbonnement(uid, plan, finDePeriode(sub, plan), "actif", sub.id,
+          !sub.cancel_at_period_end);
         await enregistrerVente({ uid, type:"abo", ref:plan, montant:f.amount_paid/100, facture:f.id });
         break;
       }
@@ -158,7 +166,7 @@ exports.handler = async (event) => {
         const plan = sub.metadata.plan || "mensuel";
         const vivant = ["active","trialing","past_due"].includes(sub.status);
         await accorderAbonnement(uid, plan, finDePeriode(sub, plan),
-          vivant ? "actif" : "suspendu", sub.id);
+          vivant ? "actif" : "suspendu", sub.id, !sub.cancel_at_period_end);
         break;
       }
 
@@ -168,7 +176,7 @@ exports.handler = async (event) => {
         const uid = (sub.metadata || {}).uid;
         if(!uid) break;
         const plan = sub.metadata.plan || "mensuel";
-        await accorderAbonnement(uid, plan, finDePeriode(sub, plan), "resilie", sub.id);
+        await accorderAbonnement(uid, plan, finDePeriode(sub, plan), "resilie", sub.id, false);
         break;
       }
     }
