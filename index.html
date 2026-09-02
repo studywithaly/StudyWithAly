@@ -4358,24 +4358,45 @@ libellePlan = function(u){
    Les elements a completer sont surlignes : impossible de les oublier.
    --------------------------------------------------------------------- */
 
-const AVIS_BROUILLON = `<div class="encadre" style="margin-bottom:26px">
-  <b>Document non finalisé.</b> Les éléments surlignés doivent être complétés
-  avant toute mise en vente.</div>`;
+function avisBrouillon(){
+  const manquants = CHAMPS_LEGAUX.filter(c => !((DB.legal || {})[c[0]] || "").trim());
+  if(!manquants.length) return "";
+  return `<div class="encadre" style="margin-bottom:26px">
+    <b>Document non finalisé.</b> ${manquants.length} élément${manquants.length>1?"s":""}
+    reste${manquants.length>1?"nt":""} à compléter avant toute mise en vente.
+    Cela se fait depuis la console développeur, onglet « Légal ».</div>`;
+}
 
-const trou = t => `<span style="background:rgba(251,191,36,.16);border:1px solid rgba(251,191,36,.45);color:var(--ambre);padding:1px 7px;border-radius:6px;font-size:13.5px;font-weight:640;white-space:nowrap">${t}</span>`;
+/* Les coordonnées sont saisies dans la console, pas dans le code : elles
+   changent quand le statut juridique évolue, et personne ne devrait avoir
+   à modifier un fichier pour ça. */
+const CHAMPS_LEGAUX = [
+  ["nom",       "Nom et prénom de l'éditrice", "[PRÉNOM NOM]",           "Marie Dupont"],
+  ["adresse",   "Adresse postale complète",    "[ADRESSE COMPLÈTE]",     "12 rue des Écoles, 34000 Montpellier"],
+  ["siret",     "Numéro SIRET",                "[SIRET]",                "123 456 789 00012"],
+  ["contact",   "Adresse électronique",        "[ADRESSE DE CONTACT]",   "contact@studywithaaly.fr"],
+  ["mediateur", "Médiateur de la consommation","[MÉDIATEUR]",            "Nom, adresse et site du médiateur"]
+];
+
+function champLegal(cle, gabarit){
+  const v = ((DB.legal || {})[cle] || "").trim();
+  if(v) return esc(v);
+  return `<span style="background:rgba(251,191,36,.16);border:1px solid rgba(251,191,36,.45);color:var(--ambre);padding:1px 7px;border-radius:6px;font-size:13.5px;font-weight:640;white-space:nowrap">${esc(gabarit)}</span>`;
+}
+
 
 const LEGAL = {
   mentions: {
     titre: "Mentions légales",
     corps: () => `
-      ${AVIS_BROUILLON}
+      ${avisBrouillon()}
       <section class="bloc-fiche"><h3>Éditeur du site</h3>
-        <p style="color:#DCD5F5;line-height:1.7;margin-bottom:12px">Studywithaaly est édité par ${trou("[PRÉNOM NOM]")}, entrepreneur individuel.</p>
+        <p style="color:#DCD5F5;line-height:1.7;margin-bottom:12px">Studywithaaly est édité par ${champLegal("nom","[PRÉNOM NOM]")}, entrepreneur individuel.</p>
         <ul>
-          <li>Adresse : ${trou("[ADRESSE COMPLÈTE]")}</li>
-          <li>SIRET : ${trou("[NUMÉRO]")}</li>
-          <li>Adresse électronique : ${trou("[CONTACT@STUDYWITHAALY.FR]")}</li>
-          <li>Directrice de la publication : ${trou("[PRÉNOM NOM]")}</li>
+          <li>Adresse : ${champLegal("adresse","[ADRESSE COMPLÈTE]")}</li>
+          <li>SIRET : ${champLegal("siret","[SIRET]")}</li>
+          <li>Adresse électronique : ${champLegal("contact","[ADRESSE DE CONTACT]")}</li>
+          <li>Directrice de la publication : ${champLegal("nom","[PRÉNOM NOM]")}</li>
         </ul></section>
       <section class="bloc-fiche"><h3>Hébergement</h3>
         <ul>
@@ -4393,9 +4414,9 @@ const LEGAL = {
   cgv: {
     titre: "Conditions générales de vente",
     corps: () => `
-      ${AVIS_BROUILLON}
+      ${avisBrouillon()}
       <section class="bloc-fiche"><h3>Article 1 — Objet</h3><ul>
-        <li>Les présentes conditions régissent la vente d'abonnements et de contenus pédagogiques numériques proposés sur studywithaaly.fr par ${trou("[PRÉNOM NOM]")}, ci-après « l'éditrice », à toute personne physique majeure agissant en qualité de consommateur, ci-après « le client ».</li>
+        <li>Les présentes conditions régissent la vente d'abonnements et de contenus pédagogiques numériques proposés sur studywithaaly.fr par ${champLegal("nom","[PRÉNOM NOM]")}, ci-après « l'éditrice », à toute personne physique majeure agissant en qualité de consommateur, ci-après « le client ».</li>
       </ul></section>
       <section class="bloc-fiche"><h3>Article 2 — Accès au service</h3><ul>
         <li>Le service est réservé aux personnes âgées de dix-huit ans révolus. Le client le certifie lors de la création de son compte.</li>
@@ -4432,7 +4453,7 @@ const LEGAL = {
         <li>Le traitement des données est décrit dans la <a href="#confidentialite">politique de confidentialité</a>, qui fait partie intégrante des présentes conditions.</li>
       </ul></section>
       <section class="bloc-fiche"><h3>Article 10 — Médiation</h3><ul>
-        <li>Conformément à l'article L612-1 du code de la consommation, le client peut recourir gratuitement au médiateur de la consommation suivant : ${trou("[NOM, ADRESSE ET SITE DU MÉDIATEUR]")}</li>
+        <li>Conformément à l'article L612-1 du code de la consommation, le client peut recourir gratuitement au médiateur de la consommation suivant : ${champLegal("mediateur","[MÉDIATEUR]")}</li>
         <li>Le client peut également saisir la plateforme européenne de règlement en ligne des litiges : <a href="https://ec.europa.eu/consumers/odr" target="_blank" rel="noopener">ec.europa.eu/consumers/odr</a></li>
       </ul></section>
       <section class="bloc-fiche"><h3>Article 11 — Droit applicable</h3><ul>
@@ -4443,10 +4464,10 @@ const LEGAL = {
   confidentialite: {
     titre: "Politique de confidentialité",
     corps: () => `
-      ${AVIS_BROUILLON}
+      ${avisBrouillon()}
       <section class="bloc-fiche"><h3>Responsable du traitement</h3><ul>
-        <li>${trou("[PRÉNOM NOM]")}, entrepreneur individuel, ${trou("[ADRESSE]")}</li>
-        <li>Contact : ${trou("[CONTACT@STUDYWITHAALY.FR]")}</li>
+        <li>${champLegal("nom","[PRÉNOM NOM]")}, entrepreneur individuel, ${champLegal("adresse","[ADRESSE]")}</li>
+        <li>Contact : ${champLegal("contact","[ADRESSE DE CONTACT]")}</li>
       </ul></section>
       <section class="bloc-fiche"><h3>Données collectées</h3><ul>
         <li><b>À la création du compte</b> : prénom, adresse électronique, mot de passe sous forme chiffrée, tranche d'âge, niveau d'études.</li>
@@ -4474,7 +4495,7 @@ const LEGAL = {
         <li>Les documents comptables sont conservés dix ans conformément à la loi.</li>
       </ul></section>
       <section class="bloc-fiche"><h3>Droits du client</h3><ul>
-        <li>Le client dispose d'un droit d'accès, de rectification, d'effacement, de limitation, d'opposition et de portabilité. Ces droits s'exercent à ${trou("[CONTACT@STUDYWITHAALY.FR]")}.</li>
+        <li>Le client dispose d'un droit d'accès, de rectification, d'effacement, de limitation, d'opposition et de portabilité. Ces droits s'exercent à ${champLegal("contact","[ADRESSE DE CONTACT]")}.</li>
         <li>Une réclamation peut être adressée à la CNIL, 3 place de Fontenoy, 75007 Paris, <a href="https://www.cnil.fr" target="_blank" rel="noopener">cnil.fr</a>.</li>
       </ul></section>
       <section class="bloc-fiche"><h3>Cookies</h3><ul>
@@ -4509,7 +4530,7 @@ function afficherLegal(cle){
       <button class="btn fantome mini" onclick="fermerLegal()" style="margin-bottom:20px">← Retour au site</button>
       <article class="lecteur">
         <h1 style="margin-bottom:8px">${esc(doc.titre)}</h1>
-        <p class="tiny muted" style="margin-bottom:26px">Dernière mise à jour : 2 septembre 2026</p>
+        <p class="tiny muted" style="margin-bottom:26px">Dernière mise à jour : ${(DB.legal && DB.legal.maj) ? jour(DB.legal.maj) : "document non finalisé"}</p>
         ${doc.corps()}
         <div class="rang" style="gap:16px;margin-top:38px;padding-top:20px;border-top:1px solid var(--bord)">
           <a href="#mentions" class="small">Mentions légales</a>
@@ -4541,6 +4562,124 @@ function routeLegale(){
 
 window.addEventListener("hashchange", routeLegale);
 routeLegale();     // au chargement, si l'adresse porte déjà une ancre
+
+
+/* ---------------------------------------------------------------------
+   13. ONGLET LEGAL DANS LA CONSOLE
+   Les coordonnees de l'editrice sont rangees dans DB.legal, publie avec le
+   reste du contenu. Elles alimentent les trois documents legaux, qui se
+   completent tout seuls des que les champs sont remplis.
+   --------------------------------------------------------------------- */
+
+/* On republie desormais DB.legal avec le contenu partage */
+sauverContenu = async function(){
+  if(!MODE_CLOUD){ Store.ecrire(DB); return; }
+  const paquet = {
+    matieres: DB.matieres, fiches: DB.fiches,
+    questions: DB.questions, livres: DB.livres,
+    legal: DB.legal || {}
+  };
+  const taille = JSON.stringify(paquet).length;
+  if(taille > 950000)
+    throw new Error("le contenu dépasse la taille maximale d'un document (" +
+      Math.round(taille/1024) + " Ko sur 1024). Allège des fiches ou réimporte en plusieurs fois.");
+  await fdb.collection("contenu").doc("base").set(paquet);
+  await fdb.collection("contenu").doc("meta").set({ initialise:true }, { merge:true });
+};
+
+function devLegal(){
+  const L = DB.legal || {};
+  const manquants = CHAMPS_LEGAUX.filter(c => !((L[c[0]]) || "").trim()).length;
+
+  return `
+  <div class="carte ${manquants ? "" : "lueur"}" style="margin-bottom:20px;border-color:${manquants ? "rgba(251,191,36,.4)" : "rgba(52,211,153,.4)"}">
+    <div class="entre">
+      <div>
+        <span class="pastille ${manquants ? "or" : "vert"}">${manquants ? manquants + " champ" + (manquants>1?"s":"") + " manquant" + (manquants>1?"s":"") : "Documents complets"}</span>
+        <h3 style="margin:9px 0 4px">Coordonnées légales</h3>
+        <p class="small muted" style="max-width:640px;line-height:1.6">
+          Ces informations alimentent les mentions légales, les conditions générales
+          de vente et la politique de confidentialité. Tant qu'un champ est vide,
+          il apparaît surligné dans les documents et un avertissement s'affiche en
+          tête de page.
+        </p>
+      </div>
+      ${L.maj ? `<span class="tiny muted">Mise à jour le ${jour(L.maj)}</span>` : ""}
+    </div>
+  </div>
+
+  <div class="carte">
+    <form onsubmit="sauverLegal(event)">
+      ${CHAMPS_LEGAUX.map(([cle, libelle, gabarit, exemple]) => `
+        <div class="champ">
+          <label for="lg-${cle}">${esc(libelle)}</label>
+          ${cle === "mediateur" || cle === "adresse"
+            ? `<textarea id="lg-${cle}" style="min-height:64px" placeholder="${esc(exemple)}">${esc(L[cle] || "")}</textarea>`
+            : `<input id="lg-${cle}" value="${esc(L[cle] || "")}" placeholder="${esc(exemple)}">`}
+        </div>`).join("")}
+
+      <div class="encadre" style="margin:18px 0">
+        <b>Le médiateur de la consommation</b> est une obligation légale pour toute
+        vente à des particuliers. L'adhésion coûte quelques dizaines d'euros par an.
+        La liste des organismes agréés est publiée par la Commission d'évaluation et
+        de contrôle de la médiation de la consommation.
+      </div>
+
+      <button class="btn primaire large" type="submit">Enregistrer et publier</button>
+    </form>
+  </div>
+
+  <div class="grille g3" style="margin-top:18px">
+    ${[["mentions","Mentions légales"],["cgv","Conditions générales"],["confidentialite","Politique de confidentialité"]]
+      .map(([k,n]) => `<article class="carte" style="padding:16px">
+        <h3 style="font-size:15px">${n}</h3>
+        <button class="btn mini fantome" style="margin-top:10px" onclick="afficherLegal('${k}')">Relire le document</button>
+      </article>`).join("")}
+  </div>`;
+}
+
+function sauverLegal(e){
+  e.preventDefault();
+  const avant = Object.assign({}, DB.legal || {});
+  const L = {};
+  CHAMPS_LEGAUX.forEach(([cle]) => {
+    const el = document.getElementById("lg-" + cle);
+    L[cle] = el ? el.value.trim() : "";
+  });
+  L.maj = Date.now();
+  DB.legal = L;
+
+  sauverContenu()
+    .then(() => {
+      const restants = CHAMPS_LEGAUX.filter(c => !L[c[0]]).length;
+      toast(restants
+        ? "Enregistré. " + restants + " champ" + (restants>1?"s":"") + " encore à compléter."
+        : "Documents légaux complets et publiés.", restants ? "" : "ok");
+      App.aller("dev");
+    })
+    .catch(err => { DB.legal = avant; toast("Publication impossible : " + err.message, "ko"); });
+}
+
+/* La console gagne son onglet */
+vueDev = function(){
+  if(!U.dev) return `<div class="vide"><h3>Accès réservé</h3><p class="small">Cette console est réservée aux comptes développeur.</p></div>`;
+  const onglets = [["questions","Questions"],["fiches","Fiches"],["cartes","Flashcards"],["livres","Livres"],
+                   ["matieres","Matières"],["users","Utilisateurs"],["licences","Licences"],
+                   ["legal","Légal"],["donnees","Données"]];
+  const rendus = { questions:devQuestions, fiches:devFiches, cartes:devCartes, livres:devLivres,
+                   matieres:devMatieres, users:devUsers, licences:devLicences,
+                   legal:devLegal, donnees:devDonnees };
+  return `
+  <header class="tete">
+    <p class="eyebrow">Console développeur</p>
+    <h1>Gérer le contenu</h1>
+    <p class="muted">Tout ce que tu modifies ici est immédiatement visible côté élève.</p>
+  </header>
+  <div class="matiere-onglets">
+    ${onglets.map(([k,n]) => `<button class="chip ${ongletDev===k?"actif":""}" onclick="ongletDev='${k}';rechercheDev='';App.aller('dev')">${n}</button>`).join("")}
+  </div>
+  ${(rendus[ongletDev] || devQuestions)()}`;
+};
 
 </script>
 </body>
