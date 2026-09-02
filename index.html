@@ -4283,6 +4283,61 @@ devLivres = function(){
   return html;
 };
 
+
+/* ---------------------------------------------------------------------
+   11. ETAT DE L'ABONNEMENT APRES RESILIATION
+   Quand un client annule, Stripe laisse l'abonnement actif jusqu'a la fin
+   de la periode deja payee. Sans precision, la boutique continue
+   d'annoncer « prochain renouvellement », ce qui laisse croire a un
+   prelevement a venir. Le webhook renseigne desormais abo.renouvelle.
+   --------------------------------------------------------------------- */
+
+const seraReconduit = () => {
+  const a = monAbo();
+  return !a || a.renouvelle !== false;
+};
+
+const _vueBoutiqueAvantResil = vueBoutique;
+vueBoutique = function(){
+  let html = _vueBoutiqueAvantResil();
+  const a = monAbo();
+  if(!a || !aboActif(U) || seraReconduit()) return html;
+
+  // l'abonnement court encore mais ne sera pas reconduit
+  html = html
+    .replace("Prochain renouvellement le ", "Accès maintenu jusqu'au ")
+    .replace('<span class="pastille vert">Abonnement actif</span>',
+             '<span class="pastille or">Résiliation enregistrée</span>')
+    .replace(">Gérer ou résilier</button>", ">Reprendre l'abonnement</button>");
+
+  const rappel = `<p class="tiny muted" style="margin-top:10px;line-height:1.55">
+      Aucun prélèvement ne suivra. Tu gardes l'accès complet jusqu'à cette date,
+      puis le compte repasse en gratuit. Tu peux reprendre à tout moment.</p>`;
+  html = html.replace(` jours restants</p>`, ` jours restants</p>${rappel}`);
+  return html;
+};
+
+/* Même précision sur la fiche de profil */
+const _vueProfilAvantResil = vueProfil;
+vueProfil = function(){
+  let html = _vueProfilAvantResil();
+  if(monAbo() && !seraReconduit()){
+    html = html.replace('<tr><td class="muted">Échéance</td>',
+      '<tr><td class="muted">Reconduction</td><td><span class="pastille or">résiliée</span></td></tr>' +
+      '<tr><td class="muted">Fin d\'accès</td>');
+  }
+  return html;
+};
+
+/* Le libellé du plan, visible dans le menu de gauche */
+const _libellePlanOrigine = libellePlan;
+libellePlan = function(u){
+  const base = _libellePlanOrigine(u);
+  if(u && U && u.id !== U.id) return base;
+  if(monAbo() && aboActif(U) && !seraReconduit()) return base + " · non reconduit";
+  return base;
+};
+
 </script>
 </body>
 </html>
