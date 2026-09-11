@@ -408,6 +408,16 @@ mark{background:rgba(236,72,153,.32);color:#fff;border-radius:3px;padding:0 2px}
 .flash-face .recto{font-size:clamp(19px,3vw,26px);font-weight:740;letter-spacing:-.02em;line-height:1.3}
 .flash-face .verso{font-size:15.5px;line-height:1.68;color:#DCD5F5}
 .flash-face .source{margin-top:18px;font-size:11.5px;color:var(--faible)}
+.flash-inner.avec-schema{min-height:540px}
+.avec-schema .flash-face{justify-content:flex-start}
+.flash-schema{display:block;max-width:100%;width:auto;max-height:300px;object-fit:contain;background:#fff;border-radius:10px;margin:16px auto 8px;flex-shrink:0}
+.flash-schema-outils{flex-shrink:0}
+.schema-carte-edit{padding:14px;border:1px solid var(--bord);border-radius:12px;margin:12px 0 20px}
+.schema-carte-edit img{display:block;max-width:100%;max-height:180px;object-fit:contain;background:#fff;border-radius:8px;margin:12px auto}
+.schema-carte-edit input[type=file]{margin-top:8px}
+.schema-dessin canvas{display:block;width:100%;height:auto;aspect-ratio:3/2;background:#fff;border-radius:8px;touch-action:none;margin:12px 0;border:1px solid var(--bord)}
+.schema-dessin .rang{flex-wrap:wrap}
+@media(max-width:600px){.avec-schema .flash-face{padding:20px 16px}.flash-schema{max-height:250px}.flash-inner.avec-schema{min-height:500px}}
 .indice-retourner{text-align:center;font-size:12px;color:var(--faible);margin-bottom:18px}
 .pile{display:flex;gap:5px;margin-bottom:18px}
 .pile span{flex:1;height:4px;border-radius:99px;background:rgba(255,255,255,.08)}
@@ -1619,20 +1629,23 @@ function afficherCarte(){
         `<span class="${i < F.i ? "faite" : i === F.i ? "encours" : ""}"></span>`).join("")}</div>
 
       <div class="carte-flash ${F.retournee?"retournee":""}" id="carte-flash" onclick="retournerCarte()">
-        <div class="flash-inner">
-          <div class="flash-face">
+        <div class="flash-inner ${c.schemaR || c.schemaV ? 'avec-schema' : ''}">
+          <div class="flash-face" ${F.retournee ? 'inert aria-hidden="true"' : ''}>
             <span class="etiquette">Recto</span>
             <div class="recto">${esc(c.r)}</div>
+            ${htmlSchemaFlash(c.schemaR, "Schéma du recto")}
             <div class="source">${esc(c.src)}</div>
           </div>
-          <div class="flash-face dos">
+          <div class="flash-face dos" ${F.retournee ? '' : 'inert aria-hidden="true"'}>
             <span class="etiquette">Verso</span>
             <div class="verso">${esc(c.v).replace(/\n\n/g,"<br><br>")}</div>
+            ${htmlSchemaFlash(c.schemaV, "Schéma du verso")}
           </div>
         </div>
       </div>
 
       <p class="indice-retourner">${F.retournee ? "Tu savais ?" : "Clique sur la carte pour la retourner"}</p>
+      ${F.retournee ? '' : '<button type="button" class="btn large" id="flash-retourner" style="margin-bottom:16px" onclick="retournerCarte()">Afficher la réponse</button>'}
 
       <div class="rang" style="gap:10px;justify-content:center" id="jugement" ${F.retournee?"":'style="display:none"'}>
         <button class="btn" style="border-color:rgba(251,113,133,.45);color:var(--rouge)" onclick="jugerCarte(false)">À revoir</button>
@@ -1641,12 +1654,23 @@ function afficherCarte(){
     </div>`;
   if(!F.retournee){ const j = $("#jugement"); if(j) j.style.display = "none"; }
   window.scrollTo({top:0});
+  resoudreImages([c.schemaR,c.schemaV].filter(Boolean), $("#zone"));
+}
+
+function htmlSchemaFlash(source, titre){
+  if(!source) return "";
+  return `<img class="flash-schema" src="${sourceImage(source)}" data-med="${esc(source)}" alt="${titre}" loading="lazy">
+    <button type="button" class="btn mini flash-schema-outils" onclick="event.stopPropagation();const img=this.previousElementSibling;zoomer(img.src,img.alt)">Agrandir le schéma</button>`;
 }
 
 function retournerCarte(){
   if(Flash.retournee) return;
   Flash.retournee = true;
   $("#carte-flash").classList.add("retournee");
+  document.querySelectorAll('.flash-face').forEach(face=>{
+    const cachee=!face.classList.contains('dos');face.inert=cachee;face.setAttribute('aria-hidden',String(cachee));
+  });
+  const bouton=document.getElementById('flash-retourner');if(bouton)bouton.remove();
   $("#jugement").style.display = "flex";
   document.querySelector(".indice-retourner").textContent = "Tu savais ?";
 }
@@ -3671,7 +3695,7 @@ fabriquerCartes = function(mid, source){
   if(source !== "questions"){
     DB.fiches.filter(f => mid === "all" || f.m === mid).forEach(f => {
       if(f.prem && !accesPremium()) return;
-      (f.cartes || []).forEach(c => cartes.push({ r:c.r, v:c.v, src:c.src || f.t, m:f.m }));
+      (f.cartes || []).forEach(c => cartes.push({ r:c.r, v:c.v, src:c.src || f.t, m:f.m, schemaR:c.schemaR || "", schemaV:c.schemaV || "" }));
     });
   }
   return cartes;
@@ -3922,11 +3946,14 @@ function devCartes(){
     car elles sont recalculées à chaque séance : pour les modifier, corrige la fiche elle-même.</p>` : ""}`;
 }
 
+let SchemaCarte = null;
+
 function editCarte(ficheId, i){
   const nouvelle = ficheId === undefined;
   const f = nouvelle ? null : DB.fiches.find(x => x.id === ficheId);
   const c = nouvelle ? { r:"", v:"" } : (f.cartes || [])[i];
   if(!nouvelle && !c) return;
+  SchemaCarte = { r:c.schemaR || "", v:c.schemaV || "", pending:0, busy:false };
 
   modale(`
     <p class="eyebrow">${nouvelle ? "Nouvelle" : "Modifier la"} flashcard</p>
@@ -3939,31 +3966,214 @@ function editCarte(ficheId, i){
         ${nouvelle ? `<p class="tiny muted" style="margin-top:7px">La carte apparaîtra dans les séances de cette matière.</p>` : ""}
       </div>
       <div class="champ"><label>Recto — la question ou le terme</label>
-        <textarea id="ca-r" required style="min-height:70px">${esc(c.r)}</textarea></div>
+        <textarea id="ca-r" style="min-height:70px" placeholder="Question, terme ou schéma ci-dessous">${esc(c.r)}</textarea></div>
+      ${editeurSchemaCarte("r", "recto")}
       <div class="champ"><label>Verso — la réponse</label>
-        <textarea id="ca-v" required style="min-height:110px">${esc(c.v)}</textarea></div>
+        <textarea id="ca-v" style="min-height:110px" placeholder="Réponse ou schéma ci-dessous">${esc(c.v)}</textarea></div>
+      ${editeurSchemaCarte("v", "verso")}
       <button class="btn primaire large" type="submit">Enregistrer</button>
       <button class="btn fantome" type="button" style="width:100%;margin-top:8px" onclick="fermerModale()">Annuler</button>
     </form>`, true);
+  apercuSchemaCarte("r"); apercuSchemaCarte("v");
 }
 
-function sauverCarte(e, ficheId, i){
+function editeurSchemaCarte(face, nom){
+  return `<section class="schema-carte-edit" aria-label="Schéma du ${nom}">
+    <label for="ca-image-${face}">Schéma du ${nom} (facultatif)</label>
+    <input type="file" id="ca-image-${face}" accept="image/png,image/jpeg,image/webp" onchange="importerSchemaCarte(this,'${face}')">
+    <p class="tiny muted">PNG, JPEG ou WebP · 10 Mo maximum. L’image sera adaptée automatiquement.</p>
+    <div id="ca-apercu-${face}"></div>
+    <div class="rang" style="gap:8px;flex-wrap:wrap">
+      <button type="button" class="btn mini" onclick="dessinerSchemaCarte('${face}')">Dessiner un schéma</button>
+      <button type="button" class="btn mini fantome" onclick="retirerSchemaCarte('${face}')">Retirer le schéma</button>
+    </div>
+    <div class="schema-dessin" id="ca-dessin-${face}"></div>
+  </section>`;
+}
+
+function apercuSchemaCarte(face){
+  const zone = document.getElementById('ca-apercu-'+face), source = SchemaCarte && SchemaCarte[face];
+  if(!zone) return;
+  zone.innerHTML = source ? `<img src="${sourceImage(source)}" data-med="${esc(source)}" alt="Aperçu du schéma du ${face==='r'?'recto':'verso'}">` : '<p class="tiny muted" style="margin:12px 0">Aucun schéma.</p>';
+  if(source) resoudreImages([source],zone);
+}
+
+async function importerSchemaCarte(input, face){
+  const fichier = input.files[0], brouillon = SchemaCarte;
+  if(!fichier || !brouillon || brouillon.busy) return;
+  if(!['image/png','image/jpeg','image/webp'].includes(fichier.type) || fichier.size > 10*1024*1024){
+    input.value=''; return toast('Choisis une image PNG, JPEG ou WebP de moins de 10 Mo.','ko');
+  }
+  brouillon.pending++;
+  brouillon.revisions=brouillon.revisions || {r:0,v:0};
+  const revision=++brouillon.revisions[face];
+  try{
+    const image = await compresserImage(fichier,1400);
+    if(SchemaCarte === brouillon && brouillon.revisions[face]===revision){ brouillon[face]=image; apercuSchemaCarte(face); }
+  }catch(err){ toast('Image illisible : '+err.message,'ko'); }
+  finally{ brouillon.pending--; input.value=''; }
+}
+
+function dessinerSchemaCarte(face){
+  const brouillon=SchemaCarte, zone=document.getElementById('ca-dessin-'+face);
+  if(!brouillon || brouillon.busy || !zone) return;
+  if(zone.querySelector('canvas')) return;
+  zone.innerHTML=`<div style="margin-top:16px">
+    <p class="small">Nouveau dessin — modèles inspirés des couleurs des fiches</p>
+    <label for="dessin-titre-${face}" class="tiny">Titre du schéma</label>
+    <input id="dessin-titre-${face}" placeholder="Titre du schéma" maxlength="70" value="Mon schéma">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">
+      ${[1,2,3,4].map(i=>`<div><label for="dessin-label-${i}-${face}" class="tiny">Légende ${i}</label><input id="dessin-label-${i}-${face}" value="Étape ${i}" maxlength="60"></div>`).join('')}
+    </div>
+    <div class="rang" style="gap:8px;margin-top:10px">
+      <label for="dessin-modele-${face}" class="tiny">Modèle</label>
+      <select id="dessin-modele-${face}" style="width:auto"><option value="cycle">Cycle en 4 étapes</option><option value="etapes">Étapes avec flèches</option><option value="comparaison">Comparaison en 2 colonnes</option></select>
+      <button type="button" class="btn mini" data-dessin="modele">Appliquer le modèle</button>
+    </div>
+    <p class="tiny muted">Appliquer remplace le dessin courant. Tu peux annuler la dernière action.</p>
+    <div class="rang" style="gap:8px;margin-top:12px">
+      <label for="dessin-outil-${face}" class="tiny">Outil</label>
+      <select id="dessin-outil-${face}" style="width:auto"><option value="stylo">Stylo</option><option value="fleche">Flèche</option><option value="cadre">Cadre</option><option value="texte">Texte</option><option value="gomme">Gomme</option></select>
+      <label for="dessin-couleur-${face}" class="tiny">Couleur</label>
+      <input id="dessin-couleur-${face}" type="color" value="#b820df" style="width:48px;height:38px;padding:3px">
+      <label for="dessin-trait-${face}" class="tiny">Trait</label>
+      <select id="dessin-trait-${face}" style="width:auto"><option value="3">Fin</option><option value="6" selected>Moyen</option><option value="12">Épais</option></select>
+      <button type="button" class="btn mini" data-dessin="annuler">Annuler la dernière action</button>
+      <button type="button" class="btn mini" data-dessin="effacer">Effacer le dessin</button>
+    </div>
+    <div data-dessin="texte-options" hidden style="margin:12px 0">
+      <label for="dessin-texte-${face}">Texte à ajouter au dessin</label>
+      <textarea id="dessin-texte-${face}" rows="3" maxlength="300" placeholder="Écris ton texte ici"></textarea>
+      <label for="dessin-taille-${face}" class="tiny">Taille du texte</label>
+      <select id="dessin-taille-${face}"><option value="20">Petit</option><option value="28" selected>Moyen</option><option value="38">Grand</option></select>
+      <p class="tiny">Clique dans le dessin pour placer ton texte, ou utilise le bouton ci-dessous.</p>
+      <button type="button" class="btn mini" data-dessin="ajouter-texte">Ajouter au centre</button>
+    </div>
+    <canvas width="900" height="600" aria-label="Zone de dessin : utiliser la souris ou le doigt. Les modèles sont aussi accessibles au clavier."></canvas>
+    <div class="rang" style="gap:8px"><button type="button" class="btn primaire mini" data-dessin="utiliser">Utiliser ce dessin sur le ${face==='r'?'recto':'verso'}</button>
+    <button type="button" class="btn fantome mini" data-dessin="fermer">Fermer sans utiliser</button></div>
+  </div>`;
+  const canvas=zone.querySelector('canvas'), ctx=canvas.getContext('2d');
+  const champ=nom=>document.getElementById('dessin-'+nom+'-'+face);
+  const action=nom=>zone.querySelector('[data-dessin="'+nom+'"]');
+  let historique=[], debut=null, fond=null, dernier=null;
+  const capture=()=>ctx.getImageData(0,0,canvas.width,canvas.height);
+  const memoriser=()=>{historique.push(capture());if(historique.length>12)historique.shift();};
+  const blanc=()=>{ctx.fillStyle='#fff';ctx.fillRect(0,0,900,600);};
+  blanc();
+  const position=e=>{const r=canvas.getBoundingClientRect();return {x:Math.max(0,Math.min(900,(e.clientX-r.left)*900/r.width)),y:Math.max(0,Math.min(600,(e.clientY-r.top)*600/r.height))};};
+  function fleche(a,b){
+    const angle=Math.atan2(b.y-a.y,b.x-a.x), taille=18;
+    ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);
+    ctx.moveTo(b.x-taille*Math.cos(angle-.5),b.y-taille*Math.sin(angle-.5));ctx.lineTo(b.x,b.y);
+    ctx.lineTo(b.x-taille*Math.cos(angle+.5),b.y-taille*Math.sin(angle+.5));ctx.stroke();
+  }
+  champ('outil').onchange=()=>{action('texte-options').hidden=champ('outil').value!=='texte';};
+  function ajouterTexte(p){
+    const valeur=champ('texte').value.trim();if(!valeur){champ('texte').focus();return;}
+    memoriser();ctx.save();
+    const taille=Number(champ('taille').value), largeur=360;
+    ctx.font='600 '+taille+'px "Segoe UI",sans-serif';ctx.fillStyle=champ('couleur').value;ctx.textAlign='left';ctx.textBaseline='top';
+    const lignes=[];
+    valeur.split(/\r?\n/).forEach(paragraphe=>{let ligne='';for(const lettre of paragraphe){if(ligne&&ctx.measureText(ligne+lettre).width>largeur){lignes.push(ligne);ligne='';}ligne+=lettre;}lignes.push(ligne);});
+    const x=Math.max(0,Math.min(p.x,canvas.width-largeur)), y=Math.max(0,Math.min(p.y,canvas.height-lignes.length*(taille+7)));
+    lignes.forEach((ligne,i)=>ctx.fillText(ligne,x,y+i*(taille+7)));ctx.restore();
+  }
+  action('ajouter-texte').onclick=()=>ajouterTexte({x:270,y:250});
+  canvas.onpointerdown=e=>{
+    if(brouillon.busy || (e.pointerType==='mouse' && e.button!==0) || debut) return;
+    if(champ('outil').value==='texte'){e.preventDefault();ajouterTexte(position(e));return;}
+    e.preventDefault();memoriser();fond=capture();debut=dernier=position(e);canvas.setPointerCapture(e.pointerId);
+    ctx.lineCap='round';ctx.lineJoin='round';ctx.lineWidth=Number(champ('trait').value);
+    ctx.strokeStyle=champ('outil').value==='gomme'?'#fff':champ('couleur').value;
+    if(champ('outil').value==='gomme')ctx.lineWidth*=4;
+    if(['stylo','gomme'].includes(champ('outil').value)){
+      ctx.beginPath();ctx.moveTo(debut.x,debut.y);ctx.lineTo(debut.x+.1,debut.y);ctx.stroke();
+    }
+  };
+  canvas.onpointermove=e=>{
+    if(!debut) return;e.preventDefault();const p=position(e), outil=champ('outil').value;
+    if(outil==='fleche' || outil==='cadre'){
+      ctx.putImageData(fond,0,0);
+      if(outil==='fleche')fleche(debut,p);else ctx.strokeRect(debut.x,debut.y,p.x-debut.x,p.y-debut.y);
+    }else{ctx.beginPath();ctx.moveTo(dernier.x,dernier.y);ctx.lineTo(p.x,p.y);ctx.stroke();}
+    dernier=p;
+  };
+  canvas.onpointerup=e=>{if(!debut)return;canvas.onpointermove(e);debut=null;fond=null;if(canvas.hasPointerCapture(e.pointerId))canvas.releasePointerCapture(e.pointerId);};
+  canvas.onpointercancel=()=>{if(fond)ctx.putImageData(fond,0,0);if(debut)historique.pop();debut=null;fond=null;};
+  action('annuler').onclick=()=>{if(historique.length)ctx.putImageData(historique.pop(),0,0);};
+  action('effacer').onclick=()=>{memoriser();blanc();};
+  action('fermer').onclick=()=>{zone.innerHTML='';};
+  action('utiliser').onclick=()=>{
+    if(SchemaCarte!==brouillon || brouillon.busy || brouillon.pending) return;
+    brouillon[face]=canvas.toDataURL('image/jpeg',.85);apercuSchemaCarte(face);zone.innerHTML='';
+  };
+  function texte(t,x,y,largeur,couleur='#252033',taille=24){
+    ctx.fillStyle=couleur;ctx.font='600 '+taille+'px "Segoe UI",sans-serif';ctx.textAlign='center';
+    const mots=t.split(/\s+/);let ligne='',lignes=[];
+    for(const mot of mots){const suite=ligne?ligne+' '+mot:mot;if(ctx.measureText(suite).width>largeur&&ligne){lignes.push(ligne);ligne=mot;}else ligne=suite;}
+    if(ligne)lignes.push(ligne);
+    lignes.slice(0,3).forEach((l,i)=>ctx.fillText(l,x,y+i*(taille+7),largeur));
+  }
+  function boite(x,y,w,h,couleur,label,numero){
+    ctx.fillStyle='#fff';ctx.strokeStyle=couleur;ctx.lineWidth=3;ctx.beginPath();ctx.roundRect(x,y,w,h,14);ctx.fill();ctx.stroke();
+    ctx.fillStyle=couleur;ctx.beginPath();ctx.roundRect(x,y,w,44,[14,14,0,0]);ctx.fill();
+    texte(String(numero),x+w/2,y+30,w-20,'#17212c',22);texte(label,x+w/2,y+85,w-30);
+  }
+  action('modele').onclick=()=>{
+    memoriser();blanc();const labels=[1,2,3,4].map(i=>champ('label-'+i).value.trim());
+    const nom=i=>labels[i]||'Étape '+(i+1), couleurs=['#d86ce9','#5dddab','#ffb36a','#a698ed'];
+    texte(champ('titre').value||'Mon schéma',450,58,820,'#b820df',30);
+    const mode=champ('modele').value;
+    if(mode==='cycle'){
+      [[100,110],[540,110],[540,365],[100,365]].forEach(([x,y],i)=>boite(x,y,260,170,couleurs[i],nom(i),i+1));
+      ctx.strokeStyle='#7160b5';ctx.lineWidth=5;
+      [[{x:380,y:195},{x:520,y:195}],[{x:670,y:300},{x:670,y:345}],[{x:520,y:450},{x:380,y:450}],[{x:230,y:345},{x:230,y:300}]].forEach(([a,b])=>fleche(a,b));
+    }else if(mode==='etapes'){
+      for(let i=0;i<4;i++){boite(35+i*220,180,170,220,couleurs[i],nom(i),i+1);if(i<3){ctx.strokeStyle='#7160b5';ctx.lineWidth=4;fleche({x:211+i*220,y:290},{x:249+i*220,y:290});}}
+    }else{
+      boite(55,130,370,370,couleurs[1],nom(0),1);boite(475,130,370,370,couleurs[2],nom(1),2);
+      texte(labels[2]||'Caractéristiques',240,315,320,'#4b3f72',22);texte(labels[3]||'Caractéristiques',660,315,320,'#4b3f72',22);
+    }
+  };
+  action('modele').onclick();
+}
+
+function retirerSchemaCarte(face){
+  if(!SchemaCarte || SchemaCarte.busy || SchemaCarte.pending) return;
+  SchemaCarte[face]=''; apercuSchemaCarte(face);
+}
+
+async function sauverCarte(e, ficheId, i){
   e.preventDefault();
+  const brouillon = SchemaCarte, formulaire = e.target;
+  if(!brouillon || brouillon.busy) return;
+  if(brouillon.pending) return toast('Attends la fin du chargement de l’image.','ko');
+  if(formulaire.querySelector('.schema-dessin canvas')) return toast('Utilise ton dessin ou ferme l’atelier avant d’enregistrer.','ko');
   const cible = i < 0 ? $("#ca-f").value : ficheId;
   const f = DB.fiches.find(x => x.id === cible);
   if(!f) return toast("Fiche introuvable.","ko");
 
   const r = $("#ca-r").value.trim(), v = $("#ca-v").value.trim();
-  if(!r || !v) return toast("Le recto et le verso sont obligatoires.","ko");
+  if((!r && !brouillon.r) || (!v && !brouillon.v)) return toast("Ajoute du texte ou un schéma sur chaque face.","ko");
 
   const avant = (f.cartes || []).slice();
-  f.cartes = f.cartes || [];
-  if(i < 0) f.cartes.push({ r, v, src:f.t });
-  else f.cartes[i] = Object.assign({}, f.cartes[i], { r, v });
-
-  sauverContenu()
-    .then(() => { fermerModale(); toast(i < 0 ? "Carte ajoutée." : "Carte mise à jour.","ok"); App.aller("dev"); })
-    .catch(err => { f.cartes = avant; toast("Publication impossible : " + err.message,"ko"); });
+  brouillon.busy=true;
+  const controles=[...formulaire.querySelectorAll('button,input,textarea,select')].map(el=>[el,el.disabled]);
+  controles.forEach(([el])=>el.disabled=true);
+  try{
+    for(const face of ['r','v']){
+      if(brouillon[face].startsWith('data:')) brouillon[face]=await stockerImage(brouillon[face]);
+    }
+    const champs={r,v,schemaR:brouillon.r,schemaV:brouillon.v};
+    f.cartes = f.cartes || [];
+    if(i < 0) f.cartes.push({...champs,src:f.t});
+    else f.cartes[i] = Object.assign({},f.cartes[i],champs);
+    await sauverContenu();
+    if(SchemaCarte === brouillon){ fermerModale(); SchemaCarte=null; }
+    toast(i < 0 ? 'Carte ajoutée.' : 'Carte mise à jour.','ok'); App.aller('dev');
+  }catch(err){ f.cartes=avant; toast('Publication impossible : '+err.message,'ko'); }
+  finally{ brouillon.busy=false; controles.forEach(([el,disabled])=>el.disabled=disabled); }
 }
 
 function supprimerCarte(ficheId, i){
