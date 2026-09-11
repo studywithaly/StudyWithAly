@@ -46,7 +46,7 @@ async function utilisateurDepuisEntete(headers){
   const brut = headers.authorization || headers.Authorization || "";
   const jeton = brut.startsWith("Bearer ") ? brut.slice(7) : null;
   if(!jeton) throw new Error("jeton absent");
-  const decode = await admin.auth().verifyIdToken(jeton);
+  const decode = await admin.auth().verifyIdToken(jeton,true);
   return { uid: decode.uid, email: decode.email };
 }
 exports.handler = async (event) => {
@@ -56,13 +56,15 @@ exports.handler = async (event) => {
   try{ user = await utilisateurDepuisEntete(event.headers); }
   catch(e){ return reponse(401, { erreur:"connexion requise" }); }
 
-  const code = String((JSON.parse(event.body || "{}").code) || "").trim().toUpperCase();
+  let code;
+  try{code=String((JSON.parse(event.body||'{}').code)||'').trim().toUpperCase();}catch{return reponse(400,{erreur:'Requête invalide.'});}
   if(!code) return reponse(400, { erreur:"code manquant" });
 
   const ref = db.collection("contenu").doc("licences");
 
   try{
     const resultat = await db.runTransaction(async (t) => {
+      if((await t.get(db.collection('suppressionComptes').doc(user.uid))).exists)throw Error('Compte en cours de suppression.');
       const doc = await t.get(ref);
       const liste = (doc.exists ? doc.data().liste : []) || [];
       const l = liste.find(x => x.code === code);

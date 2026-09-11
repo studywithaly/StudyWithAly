@@ -1,190 +1,92 @@
-// Reçoit les événements Stripe et met à jour les droits.
-// C'est le seul endroit où un abonnement peut être accordé.
-const stripe = require("stripe")(process.env.STRIPE_CLE_SECRETE);
-
-// ---------------------------------------------------------------------------
-// Initialisation Firebase Admin. Le SDK Admin ignore les règles Firestore :
-// c'est ce qui rend les droits infalsifiables depuis le navigateur.
-// ---------------------------------------------------------------------------
-const admin = require("firebase-admin");
-
-// Identifiants Firebase. Deux façons de les fournir, au choix :
-//   1. FIREBASE_SERVICE_ACCOUNT : le fichier JSON entier, collé tel quel.
-//   2. Les trois variables séparées PROJECT_ID / CLIENT_EMAIL / PRIVATE_KEY.
-function identifiants(){
-  const brut = (process.env.FIREBASE_SERVICE_ACCOUNT || "").trim();
-
-  if(brut){
-    const nettoye = (brut.startsWith("'") || brut.startsWith('"'))
-      ? brut.slice(1, -1)
-      : brut;
-    const j = JSON.parse(nettoye);
-    let cle = j.private_key || "";
-    if(!cle.includes("\n")) cle = cle.replace(/\\n/g, "\n");
-    return { projectId: j.project_id, clientEmail: j.client_email, privateKey: cle };
-  }
-
-  let cle = (process.env.FIREBASE_PRIVATE_KEY || "").trim();
-  if(cle.startsWith('"') && cle.endsWith('"')) cle = cle.slice(1, -1);
-  cle = cle.replace(/\\n/g, "\n");
-
-  return {
-    projectId:   (process.env.FIREBASE_PROJECT_ID || "").trim(),
-    clientEmail: (process.env.FIREBASE_CLIENT_EMAIL || "").trim(),
-    privateKey:  cle
-  };
+// Stripe is the payment provider. Only verified events may change entitlements.
+const stripe=require('stripe')(process.env.STRIPE_CLE_SECRETE);
+const {services}=require('./notifications');
+const reply=(statusCode,body)=>({statusCode,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+const objectId=value=>typeof value==='string'?value:value?.id;
+function subscriptionId(invoice){return objectId(invoice.subscription || invoice.parent?.subscription_details?.subscription);}
+function paidPeriodEnd(invoice){
+  const ends=(invoice.lines?.data||[]).filter(line=>line.type==='subscription'||line.parent?.subscription_item_details||line.subscription||line.price?.recurring).map(line=>Number(line.period?.end)).filter(Number.isFinite);
+  const seconds=ends.length?Math.max(...ends):Number(invoice.period_end);
+  if(!Number.isFinite(seconds)||seconds<=0)throw Error('paid-period-missing');
+  return seconds*1000;
 }
-
-if(!admin.apps.length){
-  const ids = identifiants();
-  if(!ids.projectId || !ids.clientEmail || !ids.privateKey){
-    throw new Error("Identifiants Firebase absents : renseigne FIREBASE_SERVICE_ACCOUNT "
-      + "ou les trois variables séparées, scope Functions activé sur Netlify.");
-  }
-  if(!ids.privateKey.startsWith("-----BEGIN PRIVATE KEY-----")){
-    throw new Error("Clé privée mal formée : les délimiteurs BEGIN/END manquent.");
-  }
-  admin.initializeApp({ credential: admin.credential.cert(ids) });
-}
-const db = admin.firestore();
-
-const reponse = (code, corps) => ({
-  statusCode: code,
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify(corps)
-});
-
-// ---------------------------------------------------------------------------
-// Date de fin de période. Stripe a déplacé current_period_end de l'objet
-// Subscription vers ses items sur les versions récentes de l'API. On regarde
-// aux deux endroits, et on retombe sur un calcul manuel si rien n'est trouvé,
-// pour ne jamais écrire une date invalide dans les droits.
-// ---------------------------------------------------------------------------
-function finDePeriode(sub, plan){
-  const brut = sub.current_period_end
-    || (sub.items && sub.items.data && sub.items.data[0]
-        && sub.items.data[0].current_period_end);
-
-  if(brut && Number.isFinite(Number(brut))) return Number(brut) * 1000;
-
-  console.warn("current_period_end introuvable, calcul de repli", sub.id);
-  const jours = plan === "annuel" ? 365 : 30;
-  return Date.now() + jours * 86400000;
-}
-
-async function accorderAbonnement(uid, plan, finMs, statut, idAbo, renouvelle){
-  if(!Number.isFinite(finMs)){
-    throw new Error("date de fin invalide pour " + uid);
-  }
-  await db.collection("droits").doc(uid).set({
-    abo: {
-      plan, fin: finMs, statut, stripeSub: idAbo || null,
-      // false quand le client a annulé : l'accès court jusqu'à l'échéance
-      // mais aucun prélèvement ne suivra. Sans cette information le site
-      // annonce un renouvellement qui n'aura pas lieu.
-      renouvelle: renouvelle !== false
-    },
-    maj: Date.now()
-  }, { merge:true });
-}
-
-async function ajouterAchat(uid, ref){
-  const base = await db.collection("contenu").doc("base").get();
-  const livres = (base.data() || {}).livres || [];
-  const cible = livres.find(l => l.id === ref);
-  // un pack multi-matières débloque tous les ouvrages
-  const ids = (cible && cible.m === "all") ? livres.map(l => l.id) : [ref];
-  await db.collection("droits").doc(uid).set({
-    achats: admin.firestore.FieldValue.arrayUnion(...ids),
-    maj: Date.now()
-  }, { merge:true });
-}
-
-async function enregistrerVente(v){
-  await db.collection("ventes").add(Object.assign({ date: Date.now() }, v));
-}
-
-exports.handler = async (event) => {
-  let evt;
-  try{
-    // Netlify encode parfois le corps en base64. constructEvent a besoin du
-    // corps brut octet pour octet, sinon la signature ne correspond pas.
-    const corpsBrut = event.isBase64Encoded
-      ? Buffer.from(event.body, "base64")
-      : event.body;
-
-    evt = stripe.webhooks.constructEvent(
-      corpsBrut,
-      event.headers["stripe-signature"],
-      process.env.STRIPE_SECRET_WEBHOOK
-    );
-  }catch(e){
-    console.error("signature invalide", e.message);
-    return reponse(400, { erreur:"signature invalide" });
-  }
-
-  try{
-    switch(evt.type){
-
-      case "checkout.session.completed": {
-        const s = evt.data.object;
-        const { uid, type, ref } = s.metadata || {};
-        if(!uid){ console.warn("session sans uid", s.id); break; }
-
-        if(type === "livre"){
-          await ajouterAchat(uid, ref);
-          await enregistrerVente({ uid, type:"livre", ref, montant:s.amount_total/100, session:s.id });
-        }
-        if(type === "abo" && s.subscription){
-          const sub = await stripe.subscriptions.retrieve(s.subscription);
-          await accorderAbonnement(uid, ref, finDePeriode(sub, ref), "actif", sub.id,
-            !sub.cancel_at_period_end);
-          await enregistrerVente({ uid, type:"abo", ref, montant:s.amount_total/100, session:s.id });
-        }
-        break;
-      }
-
-      // renouvellement mensuel ou annuel : on repousse l'échéance
-      case "invoice.paid": {
-        const f = evt.data.object;
-        if(!f.subscription) break;
-        const sub = await stripe.subscriptions.retrieve(f.subscription);
-        const uid = (sub.metadata || {}).uid;
-        if(!uid) break;
-        const plan = sub.metadata.plan || "mensuel";
-        await accorderAbonnement(uid, plan, finDePeriode(sub, plan), "actif", sub.id,
-          !sub.cancel_at_period_end);
-        await enregistrerVente({ uid, type:"abo", ref:plan, montant:f.amount_paid/100, facture:f.id });
-        break;
-      }
-
-      // changement de formule, mise en pause, échec de paiement
-      case "customer.subscription.updated": {
-        const sub = evt.data.object;
-        const uid = (sub.metadata || {}).uid;
-        if(!uid) break;
-        const plan = sub.metadata.plan || "mensuel";
-        const vivant = ["active","trialing","past_due"].includes(sub.status);
-        await accorderAbonnement(uid, plan, finDePeriode(sub, plan),
-          vivant ? "actif" : "suspendu", sub.id, !sub.cancel_at_period_end);
-        break;
-      }
-
-      // résiliation : l'accès court jusqu'à la fin de la période déjà réglée
-      case "customer.subscription.deleted": {
-        const sub = evt.data.object;
-        const uid = (sub.metadata || {}).uid;
-        if(!uid) break;
-        const plan = sub.metadata.plan || "mensuel";
-        await accorderAbonnement(uid, plan, finDePeriode(sub, plan), "resilie", sub.id, false);
-        break;
-      }
+async function effectFor(event,db){
+  const object=event.data.object;
+  if(['checkout.session.completed','checkout.session.async_payment_succeeded'].includes(event.type)){
+    const session=await stripe.checkout.sessions.retrieve(object.id);
+    const {uid,type,ref}=session.metadata||{};
+    if(!uid || !['paid','no_payment_required'].includes(session.payment_status))return null;
+    if(type==='livre'){
+      const base=await db.collection('contenu').doc('base').get();
+      const books=base.data()?.livres||[],book=books.find(b=>b.id===ref);
+      if(!book)throw Error('book-not-found');
+      return {uid,books:book.m==='all'?books.map(b=>b.id):[book.id],sale:{key:'checkout_'+session.id,type:'livre',ref,montant:session.amount_total/100,session:session.id,date:event.created*1000}};
     }
-
-    return reponse(200, { recu:true });
-
-  }catch(e){
-    console.error("webhook", evt.type, e);
-    return reponse(500, { erreur: e.message });   // Stripe retentera automatiquement
+    if(type==='abo' && session.subscription){
+      const sub=await stripe.subscriptions.retrieve(objectId(session.subscription));
+      if(sub.metadata?.uid!==uid)throw Error('subscription-owner-mismatch');
+      const invoiceId=objectId(session.invoice||sub.latest_invoice);
+      if(!invoiceId)return null;
+      const invoice=await stripe.invoices.retrieve(invoiceId);
+      if(invoice.status!=='paid' && invoice.paid!==true)return null;
+      return subscriptionEffect(sub,invoice,event);
+    }
   }
+  if(event.type==='invoice.paid'){
+    const sid=subscriptionId(object);if(!sid)return null;
+    const [sub,invoice]=await Promise.all([stripe.subscriptions.retrieve(sid),stripe.invoices.retrieve(object.id)]);
+    if(invoice.status!=='paid' && invoice.paid!==true)return null;
+    return subscriptionEffect(sub,invoice,event);
+  }
+  if(['customer.subscription.updated','customer.subscription.deleted','invoice.payment_failed'].includes(event.type)){
+    const sid=event.type.startsWith('invoice.')?subscriptionId(object):object.id;
+    if(!sid)return null;
+    const sub=await stripe.subscriptions.retrieve(sid);
+    return sub.metadata?.uid?{uid:sub.metadata.uid,sub}:null;
+  }
+  return null;
+}
+function subscriptionEffect(sub,invoice,event){
+  const uid=sub.metadata?.uid;if(!uid)return null;
+  return {uid,sub,paidUntil:paidPeriodEnd(invoice),sale:{key:'invoice_'+invoice.id,type:'abo',ref:sub.metadata.plan||'mensuel',montant:invoice.amount_paid/100,facture:invoice.id,date:event.created*1000}};
+}
+async function applyEvent(event,effect,db,admin){
+  const eventRef=db.collection('stripeEvenements').doc(event.id);
+  return db.runTransaction(async tx=>{
+    const seen=await tx.get(eventRef);if(seen.exists)return false;
+    if(!effect){tx.set(eventRef,{type:event.type,date:event.created*1000});return true;}
+    const rightsRef=db.collection('droits').doc(effect.uid);
+    const [rightsDoc,deleted]=await Promise.all([tx.get(rightsRef),tx.get(db.collection('suppressionComptes').doc(effect.uid))]);
+    const saleRef=effect.sale?db.collection('ventes').doc(effect.sale.key):null;
+    const saleDoc=saleRef?await tx.get(saleRef):null;
+    const rights=rightsDoc.data()||{},old=rights.abo;
+    if(!deleted.exists){
+      const changes={maj:Date.now()};
+      if(effect.books)changes.achats=admin.firestore.FieldValue.arrayUnion(...effect.books);
+      if(effect.sub){
+        const sub=effect.sub;
+        const same=!old?.stripeSub||old.stripeSub===sub.id || (effect.paidUntil>Date.now() && Number(old.fin)<=Date.now() && sub.status==='active');
+        if(same && (effect.paidUntil || old?.stripeSub===sub.id)){
+          const fin=effect.paidUntil?Math.max(Number(old?.fin)||0,effect.paidUntil):Number(old.fin);
+          const status=['active','trialing','past_due'].includes(sub.status)?'actif':sub.status==='canceled'?'resilie':'suspendu';
+          changes.abo={plan:sub.metadata?.plan||old?.plan||'mensuel',fin,statut:status,stripeSub:sub.id,renouvelle:sub.status!=='canceled'&&!sub.cancel_at_period_end};
+        }
+      }
+      if(changes.abo||changes.achats)tx.set(rightsRef,changes,{merge:true});
+    }
+    if(saleRef&&!saleDoc.exists){const {key,...sale}=effect.sale;tx.set(saleRef,{...sale,uid:deleted.exists?'compte-supprime':effect.uid});}
+    tx.set(eventRef,{type:event.type,date:event.created*1000});
+    return true;
+  });
+}
+exports.handler=async event=>{
+  if(event.httpMethod!=='POST')return reply(405,{erreur:'Méthode non autorisée.'});
+  let verified;
+  try{verified=stripe.webhooks.constructEvent(event.isBase64Encoded?Buffer.from(event.body,'base64'):event.body,event.headers['stripe-signature'],process.env.STRIPE_SECRET_WEBHOOK);}
+  catch{return reply(400,{erreur:'Signature invalide.'});}
+  try{const {db,admin}=services();const effect=await effectFor(verified,db);await applyEvent(verified,effect,db,admin);return reply(200,{recu:true});}
+  catch(error){console.error('webhook',verified.type,error.code||error.name);return reply(500,{erreur:'Événement non traité ; une nouvelle tentative est nécessaire.'});}
 };
+exports.applyEvent=applyEvent;
+exports.effectFor=effectFor;
+exports.paidPeriodEnd=paidPeriodEnd;

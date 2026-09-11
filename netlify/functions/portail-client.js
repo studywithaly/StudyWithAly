@@ -47,11 +47,12 @@ async function utilisateurDepuisEntete(headers){
   const brut = headers.authorization || headers.Authorization || "";
   const jeton = brut.startsWith("Bearer ") ? brut.slice(7) : null;
   if(!jeton) throw new Error("jeton absent");
-  const decode = await admin.auth().verifyIdToken(jeton);
+  const decode = await admin.auth().verifyIdToken(jeton,true);
   return { uid: decode.uid, email: decode.email };
 }
 
 exports.handler = async (event) => {
+  if(event.httpMethod!=='POST')return reponse(405,{erreur:'Méthode non autorisée.'});
   let user;
   try{ user = await utilisateurDepuisEntete(event.headers); }
   catch(e){ return reponse(401, { erreur:"connexion requise" }); }

@@ -27,7 +27,9 @@ exports.handler = async event => {
   if (event.httpMethod !== 'POST') return reply(405,{erreur:'Méthode non autorisée.'});
   const {admin,db} = services();
   let user;
-  try { user = await admin.auth().verifyIdToken((event.headers.authorization || '').replace(/^Bearer /,'')); }
+  try { user = await admin.auth().verifyIdToken((event.headers.authorization || '').replace(/^Bearer /,''),true);
+    if((await db.collection('suppressionComptes').doc(user.uid).get()).exists)throw Error('account-deleting');
+  }
   catch { return reply(401,{erreur:'Connecte-toi pour régler tes notifications.'}); }
   let data,ref;
   try {

@@ -61,7 +61,8 @@ async function utilisateurDepuisEntete(headers){
   const brut = headers.authorization || headers.Authorization || "";
   const jeton = brut.startsWith("Bearer ") ? brut.slice(7) : null;
   if(!jeton) throw new Error("jeton absent");
-  const decode = await admin.auth().verifyIdToken(jeton);
+  const decode = await admin.auth().verifyIdToken(jeton,true);
+  if((await db.collection('suppressionComptes').doc(decode.uid).get()).exists)throw Error('compte indisponible');
   return { uid: decode.uid, email: decode.email };
 }
 
@@ -95,7 +96,9 @@ exports.handler = async (event) => {
   try{ user = await utilisateurDepuisEntete(event.headers); }
   catch(e){ return reponse(401, { erreur:"connexion requise" }); }
 
-  const { type, ref } = JSON.parse(event.body || "{}");
+  let type,ref;
+  try{({type,ref}=JSON.parse(event.body||'{}'));}catch{return reponse(400,{erreur:'Requête invalide.'});}
+  if(!['abo','livre'].includes(type)||typeof ref!=='string')return reponse(400,{erreur:'Achat invalide.'});
   const site = process.env.URL || process.env.DEPLOY_PRIME_URL || "";
   const retour = { success_url: site + "/?paiement=ok", cancel_url: site + "/?paiement=annule" };
 
@@ -104,7 +107,7 @@ exports.handler = async (event) => {
     const droits = await db.collection("droits").doc(user.uid).get();
     let client = droits.exists ? droits.data().clientStripe : null;
     if(!client){
-      const c = await stripe.customers.create({ email:user.email, metadata:{ uid:user.uid } });
+      const c = await stripe.customers.create({ email:user.email, metadata:{ uid:user.uid } },{idempotencyKey:'customer-'+user.uid});
       client = c.id;
       await db.collection("droits").doc(user.uid).set({ clientStripe:client }, { merge:true });
     }
