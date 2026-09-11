@@ -1206,6 +1206,9 @@ let matiereActive = "anat";
 let recherche = "";
 
 function vueFiches(){
+  if(!DB.matieres.some(m => m.id === matiereActive)){
+    matiereActive = (DB.matieres.find(m => DB.fiches.some(f => f.m === m.id)) || DB.matieres[0] || {}).id || "";
+  }
   const fiches = DB.fiches.filter(f => f.m === matiereActive);
   const p = progressionMatiere(matiereActive);
   const m = mat(matiereActive);
