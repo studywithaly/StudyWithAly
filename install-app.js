@@ -74,7 +74,7 @@ Auth.deconnecter=async function(...args){
   return logoutWithoutNotifications.apply(this,args);
 };
 if(window.firebase?.messaging && MODE_CLOUD){
-  firebase.messaging.isSupported().then(supported=>{
+  Promise.resolve(firebase.messaging.isSupported()).then(supported=>{
     if(supported)firebase.messaging().onMessage(payload=>{
       if(U && savedNotifications().token)toast(payload.notification?.title || 'Studywithaaly');
     });
