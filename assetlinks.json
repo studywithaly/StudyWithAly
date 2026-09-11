@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "fr.studywithaaly.app",
+      "sha256_cert_fingerprints": [
+        "C0:BC:3B:1F:24:36:E6:D5:3A:19:41:CA:73:A1:73:49:36:05:8B:3D:0E:15:B7:C1:9A:6D:18:AB:33:8E:DA:13"
+      ]
+    }
+  }
+]

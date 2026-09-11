@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Studywithaaly — Fiches, quiz et progression</title>
+<meta name="theme-color" content="#0B0718">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" href="/app-icon-192.png">
+<link rel="apple-touch-icon" href="/app-icon-192.png">
+<script src="/install-app.js" defer></script>
 <style>
 /* ============ TOKENS ============ */
 :root{
@@ -155,8 +160,8 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
   background:linear-gradient(90deg,transparent,rgba(167,139,250,.75),transparent);
 }
 .grille{display:grid;gap:16px}
-.g2{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
-.g3{grid-template-columns:repeat(auto-fill,minmax(248px,1fr))}
+.g2{grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr))}
+.g3{grid-template-columns:repeat(auto-fill,minmax(min(100%,248px),1fr))}
 .g4{grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
 .rang{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .entre{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
@@ -427,6 +432,9 @@ mark{background:rgba(236,72,153,.32);color:#fff;border-radius:3px;padding:0 2px}
 .vide h3{margin-bottom:8px;color:var(--texte)}
 
 /* ============ RESPONSIVE ============ */
+.nav-plus{display:none}
+.colonne-principale,.grille>*{min-width:0}
+.schema-carte-edit,.schema-dessin{min-width:0}
 @media(max-width:940px){
   #vue-auth{grid-template-columns:1fr}
   .auth-vitrine{display:none}
@@ -436,13 +444,52 @@ mark{background:rgba(236,72,153,.32);color:#fff;border-radius:3px;padding:0 2px}
   #vue-app{grid-template-columns:1fr}
   .rail{
     position:fixed;bottom:0;top:auto;left:0;right:0;height:auto;
-    flex-direction:row;overflow-x:auto;border-right:none;border-top:1px solid var(--bord);
-    padding:8px;gap:4px;z-index:60
+    flex-direction:row;overflow:visible;border-right:none;border-top:1px solid var(--bord);
+    padding:6px max(4px,env(safe-area-inset-right)) max(6px,env(safe-area-inset-bottom)) max(4px,env(safe-area-inset-left));gap:2px;z-index:60;
+    background:rgba(15,10,31,.98)
   }
   .logo,.nav-titre,.rail-bas{display:none}
-  .nav-lien{flex-direction:column;gap:4px;font-size:10.5px;padding:8px 12px;min-width:70px;align-items:center;text-align:center}
+  .nav-lien{flex:1;min-width:0;min-height:56px;flex-direction:column;gap:4px;font-size:10px;padding:7px 2px;align-items:center;justify-content:center;text-align:center}
   .nav-lien span{white-space:nowrap}
-  .zone{padding-bottom:110px}
+  .nav-lien[data-vue=boutique],.nav-lien[data-vue=bibliotheque],.nav-lien[data-vue=profil],.nav-lien[data-vue=dev]{display:none}
+  .nav-plus{display:flex}
+  .zone{padding:22px 16px 30px}
+  .colonne-principale{padding-bottom:calc(80px + env(safe-area-inset-bottom))}
+  .pied{padding:20px 16px;overflow-wrap:anywhere}
+  .btn,.btn.mini,.chip,.schema-agrandir{min-height:44px}
+  .btn,.chip{touch-action:manipulation}
+  input:not([type=checkbox]):not([type=radio]),select,textarea{font-size:16px}
+  input[type=color]{min-width:44px;min-height:44px}
+  .matiere-onglets{gap:6px}
+  .matiere-onglets .chip{padding:9px 12px}
+  .tete h1,.lecteur h1{font-size:clamp(26px,6.5vw,38px);overflow-wrap:anywhere}
+  .carte{padding:18px}
+  .voile{padding:10px;place-items:center}
+  .modale,.modale.large{max-width:100%;max-height:calc(100dvh - 20px);padding:20px 16px;overscroll-behavior:contain}
+  .schema-carte-edit{padding:10px}
+  .schema-dessin select{max-width:100%}
+  .flash-face{padding:24px 18px}
+  .flash-face .recto{font-size:21px}
+  .flash-face .verso{font-size:16px;line-height:1.5}
+  .scene-flash{width:100%;min-width:0}
+  .tbl-scroll{max-width:100%;overscroll-behavior-x:contain}
+  .auth-form-zone{padding:24px 16px;min-height:100dvh}
+  #toasts{right:12px;left:12px;bottom:calc(88px + env(safe-area-inset-bottom))}
+  .toast{max-width:100%;overflow-wrap:anywhere}
+}
+/* Small phones: let content shrink and wrap inside the available width. */
+@media(max-width:420px){
+  .zone{padding:20px 12px 28px;min-width:0}
+  .carte{padding:16px}
+  .rang>*,.entre>*{min-width:0;max-width:100%}
+  .btn,.chip{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+  .zone h2,.zone h3,.modale h2{overflow-wrap:anywhere}
+  .barre-recherche input{padding-right:42px}
+  .anneau .val{display:flex;align-items:center;justify-content:center;gap:2px}
+  .pied .signature{flex-wrap:wrap;justify-content:center}
+  .schema-carte-edit input[type=file]{width:100%;min-width:0}
+  .nav-lien{font-size:9px;letter-spacing:0}
+  .flash-face{justify-content:flex-start;overflow-wrap:anywhere}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
 </style>
@@ -450,6 +497,8 @@ mark{background:rgba(236,72,153,.32);color:#fff;border-radius:3px;padding:0 2px}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
+<script src="/push-config.js"></script>
 </head>
 <body>
 
@@ -575,6 +624,9 @@ mark{background:rgba(236,72,153,.32);color:#fff;border-radius:3px;padding:0 2px}
     <div class="nav-titre" id="titre-dev">Développeur</div>
     <button class="nav-lien" data-vue="dev" id="nav-dev" onclick="App.aller('dev')">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M9 7l-5 5 5 5M15 7l5 5-5 5"/></svg><span>Console</span>
+    </button>
+    <button class="nav-lien nav-plus" type="button" onclick="ouvrirMenuMobile()" aria-label="Plus : boutique, bibliothèque et compte" aria-haspopup="dialog">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg><span>Plus</span>
     </button>
 
     <div class="rail-bas">
@@ -1201,6 +1253,8 @@ const App = {
   aller(v){
     VUE = v;
     document.querySelectorAll(".nav-lien").forEach(b => b.classList.toggle("actif", b.dataset.vue === v));
+    const plus=document.querySelector('.nav-plus');
+    if(plus)plus.classList.toggle('actif',['boutique','bibliotheque','profil','dev'].includes(v));
     $("#mini-plan").textContent = libellePlan(U);
     const rendus = { fiches:vueFiches, quiz:vueQuiz, flashcards:vueFlashcards, progression:vueProgression, boutique:vueBoutique, bibliotheque:vueBibliotheque, profil:vueProfil, dev:vueDev };
     $("#zone").innerHTML = (rendus[v] || vueFiches)();
@@ -1208,6 +1262,16 @@ const App = {
   },
   rafraichir(){ App.aller(VUE); }
 };
+
+function ouvrirMenuMobile(){
+  const liens=[['boutique','Boutique'],['bibliotheque','Bibliothèque'],['profil','Mon profil']];
+  if(U && U.dev)liens.push(['dev','Console développeur']);
+  modale(`<h2 style="margin-bottom:16px">Menu</h2><div style="display:grid;gap:8px">
+    ${liens.map(([vue,nom])=>`<button class="btn large" onclick="fermerModale();App.aller('${vue}')">${nom}</button>`).join('')}
+    <button class="btn fantome large" onclick="fermerModale();Auth.deconnecter()">Se déconnecter</button>
+    <button class="btn large" onclick="fermerModale()">Fermer le menu</button></div>`);
+  const panneau=document.querySelector('#modales .modale');if(panneau){panneau.setAttribute('role','dialog');panneau.setAttribute('aria-label','Menu de navigation');}
+}
 
 /* =====================================================================
    5. FICHES
@@ -3903,7 +3967,7 @@ function corpsCartes(){
   if(!liste.length) return `<tr><td colspan="5" class="muted" style="text-align:center;padding:26px">
     Aucune carte enregistrée. Crée-en une, ou extrais-les d'un PDF depuis une fiche.</td></tr>`;
   return liste.map(x => `<tr>
-      <td style="max-width:280px">${surligner(x.c.r, q)}</td>
+      <td style="max-width:280px">${surligner(x.c.r, q)}${x.c.schemaR || x.c.schemaV ? '<br><span class="pastille bleu">Avec schéma</span>' : ''}</td>
       <td style="max-width:320px" class="muted">${surligner((x.c.v || "").slice(0,150), q)}${(x.c.v||"").length>150?"…":""}</td>
       <td><span class="pastille">${esc(nomMat(x.fiche.m))}</span></td>
       <td class="muted">${esc(x.fiche.t)}</td>

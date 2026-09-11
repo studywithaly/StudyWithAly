@@ -9,3 +9,22 @@
 # le webhook Stripe a besoin du corps brut pour vérifier la signature
 [functions."webhook-stripe"]
   included_files = []
+
+[functions."rappels"]
+  schedule = "0 * * * *"
+
+[[redirects]]
+  from = "/.well-known/assetlinks.json"
+  to = "/assetlinks.json"
+  status = 200
+  force = true
+
+[[headers]]
+  for = "/service-worker.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/.well-known/assetlinks.json"
+  [headers.values]
+    Content-Type = "application/json"
