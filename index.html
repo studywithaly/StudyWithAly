@@ -9,6 +9,7 @@
 <link rel="icon" type="image/png" href="/app-icon-192.png">
 <link rel="apple-touch-icon" href="/app-icon-192.png">
 <script src="/install-app.js" defer></script>
+<script src="/learning.js" defer></script>
 <style>
 /* ============ TOKENS ============ */
 :root{
@@ -451,7 +452,7 @@ mark{background:rgba(236,72,153,.32);color:#fff;border-radius:3px;padding:0 2px}
   .logo,.nav-titre,.rail-bas{display:none}
   .nav-lien{flex:1;min-width:0;min-height:56px;flex-direction:column;gap:4px;font-size:10px;padding:7px 2px;align-items:center;justify-content:center;text-align:center}
   .nav-lien span{white-space:nowrap}
-  .nav-lien[data-vue=boutique],.nav-lien[data-vue=bibliotheque],.nav-lien[data-vue=profil],.nav-lien[data-vue=dev]{display:none}
+  .nav-lien[data-vue=progression],.nav-lien[data-vue=boutique],.nav-lien[data-vue=bibliotheque],.nav-lien[data-vue=profil],.nav-lien[data-vue=dev]{display:none}
   .nav-plus{display:flex}
   .zone{padding:22px 16px 30px}
   .colonne-principale{padding-bottom:calc(80px + env(safe-area-inset-bottom))}
@@ -596,7 +597,8 @@ mark{background:rgba(236,72,153,.32);color:#fff;border-radius:3px;padding:0 2px}
       Studywithaaly
     </div>
 
-    <div class="nav-titre">Apprendre</div>
+      <div class="nav-titre">Apprendre</div>
+      <button class="nav-lien" data-vue="aujourdhui" onclick="App.aller('aujourdhui')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18m-13 5 3 3 5-5"/></svg><span>Aujourd’hui</span></button>
     <button class="nav-lien" data-vue="fiches" onclick="App.aller('fiches')">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 5a2 2 0 012-2h9l5 5v11a2 2 0 01-2 2H6a2 2 0 01-2-2z"/><path d="M14 3v6h6M8 13h7M8 17h5"/></svg><span>Fiches</span>
     </button>
@@ -758,12 +760,11 @@ async function initDB(){
 async function chargerContenu(){
   if(!MODE_CLOUD) return;
   try{
-    const base = await fdb.collection("contenu").doc("base").get();
-    if(base.exists) Object.assign(DB, base.data());
-    else if(U && U.dev) await fdb.collection("contenu").doc("base").set({
-      matieres:DB.matieres, fiches:DB.fiches, questions:DB.questions, livres:DB.livres
-    });
-  }catch(e){ toast("Contenu distant illisible, version locale utilisée.","ko"); }
+    const response=await appelServeur('site-api',{action:'content'});
+    Object.assign(DB,response.contenu);
+    DROITS=Object.assign({abo:null,achats:[]},response.droits);
+  }catch(e){DB.fiches=[];DB.questions=[];DB.livres=[];toast("Chargement impossible : "+e.message,"ko");}
+  if(!U || !U.dev)return;
   try{
     const lic = await fdb.collection("contenu").doc("licences").get();
     DB.licences = lic.exists ? (lic.data().liste || []) : [];
@@ -1196,22 +1197,16 @@ const Auth = {
       c = await fauth.createUserWithEmailAndPassword(email, mdp);
     }catch(err){ return toast(traduireErreur(err),"ko"); }
     // À partir d'ici l'utilisateur est authentifié : Firestore devient accessible.
-    let premier = false;
-    try{
-      const meta = await fdb.collection("contenu").doc("meta").get();
-      premier = !meta.exists || !meta.data().premierCompte;
-    }catch(e){ premier = false; }
-    const u = nouvelUtilisateur(nom, email, mdp, premier);
+    const u = nouvelUtilisateur(nom, email, mdp, false);
     u.id = c.user.uid;
     delete u.mdp;                       // les mots de passe restent chez Firebase Auth
     try{
       await fdb.collection("users").doc(u.id).set(u);
-      if(premier) await fdb.collection("contenu").doc("meta").set({ initialise:true, premierCompte:u.email }, { merge:true });
     }catch(err){ return toast("Compte créé mais base inaccessible : " + err.message,"ko"); }
 
     envoyerConfirmation();             // e-mail de confirmation d'adresse
     ouvrirSession(u);
-    toast(premier ? "Compte développeur créé. Bienvenue " + nom + "." : "Compte créé. Bienvenue " + nom + ".","ok");
+    toast("Compte créé. Bienvenue " + nom + ".","ok");
   },
 
   async deconnecter(){
@@ -1233,7 +1228,7 @@ async function ouvrirSession(u){
   $("#mini-plan").textContent = libellePlan(u);
   $("#nav-dev").style.display = u.dev ? "" : "none";
   $("#titre-dev").style.display = u.dev ? "" : "none";
-  App.aller("fiches");
+  App.aller("aujourdhui");
   if(MODE_CLOUD && !adresseConfirmee())
     setTimeout(() => toast("Pense à confirmer ton adresse e-mail : le lien est dans ta boîte de réception."), 2000);
 
@@ -1256,7 +1251,7 @@ const App = {
     const plus=document.querySelector('.nav-plus');
     if(plus)plus.classList.toggle('actif',['boutique','bibliotheque','profil','dev'].includes(v));
     $("#mini-plan").textContent = libellePlan(U);
-    const rendus = { fiches:vueFiches, quiz:vueQuiz, flashcards:vueFlashcards, progression:vueProgression, boutique:vueBoutique, bibliotheque:vueBibliotheque, profil:vueProfil, dev:vueDev };
+    const rendus = { aujourdhui:window.vueAujourdhui||vueFiches, fiches:vueFiches, quiz:vueQuiz, flashcards:vueFlashcards, progression:vueProgression, boutique:vueBoutique, bibliotheque:vueBibliotheque, profil:vueProfil, dev:vueDev };
     $("#zone").innerHTML = (rendus[v] || vueFiches)();
     window.scrollTo({top:0});
   },
@@ -1264,7 +1259,7 @@ const App = {
 };
 
 function ouvrirMenuMobile(){
-  const liens=[['boutique','Boutique'],['bibliotheque','Bibliothèque'],['profil','Mon profil']];
+  const liens=[['progression','Ma progression'],['boutique','Boutique'],['bibliotheque','Bibliothèque'],['profil','Mon profil']];
   if(U && U.dev)liens.push(['dev','Console développeur']);
   modale(`<h2 style="margin-bottom:16px">Menu</h2><div style="display:grid;gap:8px">
     ${liens.map(([vue,nom])=>`<button class="btn large" onclick="fermerModale();App.aller('${vue}')">${nom}</button>`).join('')}
@@ -1305,8 +1300,9 @@ function vueFiches(){
     <div>
       <h2 style="margin-bottom:4px">${esc(m.nom)}</h2>
       <p class="small muted">${esc(m.desc||"")} · ${p.lues}/${p.total} fiches lues</p>
+      <p class="tiny muted">Lecture : ${p.total?Math.round(p.lues/p.total*100):0} % · Quiz : ${p.moyenne===null?'pas encore évalué':p.moyenne+' %'}</p>
     </div>
-    ${anneau(p.pct, m.c1, m.c2, 88)}
+    ${anneau(p.total?Math.round(p.lues/p.total*100):0, m.c1, m.c2, 88)}
   </div>
 
   <div id="liste-fiches">${htmlListeFiches()}</div>`;
@@ -1523,6 +1519,8 @@ function afficherQuestion(){
 }
 
 function repondre(idx){
+  if(!Q || Q.transition || !Q.liste[Q.i])return;
+  const session=Q;Q.transition=true;
   clearInterval(Q.timer);
   const q = Q.liste[Q.i];
   Q.reponses.push({ id:q.id, choix:idx, juste: idx === q.r });
@@ -1533,7 +1531,7 @@ function repondre(idx){
     else if(i === idx) b.classList.add("faux");
   });
   Q.i++;
-  setTimeout(() => { if(Q.i < Q.liste.length) afficherQuestion(); else terminerQuiz(); }, 650);
+  setTimeout(() => { if(Q!==session)return;Q.transition=false;if(Q.i < Q.liste.length) afficherQuestion(); else terminerQuiz(); }, 650);
 }
 
 function abandonnerQuiz(){
@@ -2028,6 +2026,7 @@ async function activerLicence(e){
     try{
       const r = await appelServeur("activer-licence", { code });
       await chargerDroits();
+      await chargerContenu();
       fermerModale();
       tracer("Licence activée : " + code); sauver();
       toast("Licence " + r.plan + " activée jusqu'au " + jour(r.fin) + ".","ok");
@@ -2082,7 +2081,8 @@ async function telechargerLivre(id){
     window.open(l.pdf, "_blank", "noopener");
     return;
   }
-  const fiches = l.m === "all" ? DB.fiches : DB.fiches.filter(f => f.m === l.m);
+  let fiches = l.m === "all" ? DB.fiches : DB.fiches.filter(f => f.m === l.m);
+  if(MODE_CLOUD){try{fiches=(await appelServeur('site-api',{action:'book',id})).fiches;}catch(error){return toast(error.message,'ko');}}
   for(const f of fiches) for(const u of (f.img||[])) await resoudreMedia(u);
   const doc = `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>${esc(l.titre)}</title><style>
     @page{margin:18mm 16mm}
@@ -2799,6 +2799,7 @@ function confirmerSuppression(collection, id){
       [2500, 6000, 11000].forEach(d => setTimeout(async () => {
         if(!U) return;
         await chargerDroits();
+        await chargerContenu();
         $("#mini-plan").textContent = libellePlan(U);
         if(["boutique","bibliotheque","profil"].includes(VUE)) App.aller(VUE);
       }, d));
@@ -2807,7 +2808,7 @@ function confirmerSuppression(collection, id){
 
   if(MODE_CLOUD){
     document.getElementById("astuce-dev").innerHTML =
-      "Comptes hébergés sur Firebase.<br>Le tout premier compte créé devient le compte développeur.";
+      "Comptes hébergés sur Firebase. Les accès développeur sont attribués par un responsable du site.";
     fauth.onAuthStateChanged(async user => {
       if(!user || U) return;
       try{
@@ -3028,8 +3029,8 @@ async function resoudreMedia(u){
   if(!u.startsWith("med:") || MEDIAS[u]) return MEDIAS[u];
   if(!MODE_CLOUD) return null;
   try{
-    const d = await fdb.collection("medias").doc(u.slice(4)).get();
-    if(d.exists) MEDIAS[u] = d.data().data;
+    if(U && U.dev){const d=await fdb.collection("medias").doc(u.slice(4)).get();if(d.exists)MEDIAS[u]=d.data().data;}
+    else{const result=await appelServeur('site-api',{action:'media',ids:[u]});if(result.medias[u])MEDIAS[u]=result.medias[u];}
   }catch(e){}
   return MEDIAS[u];
 }
@@ -3715,7 +3716,7 @@ async function enregistrerExtraction(){
     const enonce = valeur(".ex-q-txt", i);
     if(!enonce) return;
     nouvellesQuestions.push({
-      id: uid("q"), m: f.m, ch: f.ch,
+      id: uid("q"), m: f.m, ch: f.ch, ficheId:f.id, prem:!!f.prem,
       q: enonce, o: src.o.slice(), r: src.r, e: valeur(".ex-q-exp", i)
     });
   });
