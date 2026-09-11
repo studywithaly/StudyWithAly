@@ -232,6 +232,8 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .fiche-carte{cursor:pointer;transition:transform .18s,border-color .18s;display:flex;flex-direction:column;gap:11px}
 .fiche-carte:hover{transform:translateY(-3px);border-color:var(--bord-fort)}
 .fiche-carte.lue{border-color:rgba(52,211,153,.34)}
+.fiche-apercu{width:100%;height:160px;object-fit:cover;object-position:top;background:#fff;border-radius:10px}
+.fiche-resume{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:var(--doux);font-size:14px;line-height:1.5}
 .cadenas{position:absolute;top:14px;right:14px;opacity:.75}
 .lecteur{max-width:820px}
 .lecteur h2{margin-bottom:6px}
@@ -339,11 +341,24 @@ details summary::marker{color:var(--doux)}
 .visionneuse{padding:0;overflow:hidden;margin-bottom:24px}
 .visionneuse iframe{width:100%;height:76vh;min-height:420px;border:none;background:#fff;display:block}
 .visionneuse .barre-outils{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid var(--bord);flex-wrap:wrap}
-.schemas{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));margin:22px 0}
+.schemas{display:grid;gap:24px;grid-template-columns:minmax(0,1fr);margin:22px 0}
 .schemas figure{background:#fff;border-radius:12px;padding:8px;border:1px solid var(--bord)}
 .schemas img{width:100%;display:block;border-radius:7px;cursor:zoom-in}
-.schemas figcaption{color:#4B3F72;font-size:11.5px;padding:7px 4px 2px;text-align:center}
-.zoom-voile img{max-width:100%;max-height:86vh;border-radius:12px;background:#fff}
+.schemas figcaption{color:#4B3F72;font-size:13px;padding:10px 4px 2px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.schema-agrandir{font:inherit;color:#4B3F72;background:#f1edff;border:1px solid #b8a5e0;border-radius:8px;padding:8px 12px;cursor:pointer}
+.schema-agrandir:focus-visible,.schemas img:focus-visible{outline:3px solid var(--violet);outline-offset:4px}
+.zoom-lecteur{position:fixed;inset:0;margin:auto;width:96vw;max-width:1500px;height:94vh;height:94dvh;max-height:100dvh;padding:0;border:1px solid var(--bord);border-radius:16px;background:var(--fond,#100b20);color:var(--texte);overflow:hidden}
+.zoom-lecteur[open]{display:flex;flex-direction:column}
+.zoom-lecteur::backdrop{background:rgba(6,3,16,.85)}
+.zoom-lecteur:fullscreen{width:100%;height:100%;max-width:none;border:0;border-radius:0}
+.zoom-outils{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px;border-bottom:1px solid var(--bord);flex-shrink:0}
+.zoom-titre{flex:1 1 200px;font-size:14px;margin:0}
+.zoom-outils button{min-height:42px;min-width:42px}
+.zoom-niveau{min-width:48px;text-align:center;font-variant-numeric:tabular-nums}
+.zoom-page{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:16px}
+.zoom-page img{display:block;max-width:none;max-height:none;height:auto;margin:0 auto;background:#fff;border-radius:6px}
+.zoom-aide{padding:8px 12px;font-size:12px;color:var(--doux);margin:0}
+@media(max-width:600px){.zoom-lecteur{width:100vw;height:100dvh;border-radius:0}.zoom-titre{flex-basis:100%}.zoom-page{padding:8px}.zoom-outils{gap:6px;padding:8px}}
 .galerie-edit{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));margin-top:10px}
 .vignette{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--bord);background:#fff;aspect-ratio:3/4}
 .vignette img{width:100%;height:100%;object-fit:cover;display:block}
@@ -768,12 +783,70 @@ async function televerser(input, champCible, dossier){
   }
 }
 
-function zoomer(url){
-  const v = document.createElement("div");
-  v.className = "voile zoom-voile";
-  v.innerHTML = `<img src="${url}" alt="Schéma agrandi">`;
-  v.addEventListener("click", () => v.remove());
+function zoomer(url, titre = "Schéma agrandi"){
+  if(document.querySelector(".zoom-lecteur")) return;
+  const precedent = document.activeElement;
+  const defilement = document.body.style.overflow;
+  const v = document.createElement("dialog");
+  v.className = "zoom-lecteur";
+  v.setAttribute("aria-label", titre);
+  v.innerHTML = `<div class="zoom-outils">
+    <h2 class="zoom-titre"></h2>
+    <button type="button" class="btn mini" data-action="moins" aria-label="Réduire le zoom">−</button>
+    <output class="zoom-niveau" aria-live="polite" aria-label="Niveau de zoom">100 %</output>
+    <button type="button" class="btn mini" data-action="plus" aria-label="Augmenter le zoom">+</button>
+    <button type="button" class="btn mini" data-action="ajuster">Ajuster</button>
+    <button type="button" class="btn mini" data-action="plein">Plein écran</button>
+    <button type="button" class="btn mini" data-action="fermer" autofocus>Fermer</button>
+  </div>
+  <div class="zoom-page" tabindex="0" role="region" aria-label="Fiche agrandie, défilement horizontal et vertical"><img></div>
+  <p class="zoom-aide">Utilise + et − pour zoomer, les flèches pour défiler et Échap pour fermer.</p>`;
+  const page = v.querySelector(".zoom-page"), img = v.querySelector("img");
+  const bouton = action => v.querySelector(`[data-action="${action}"]`);
+  let niveau = 100;
+  img.src = url;
+  img.alt = titre;
+  v.querySelector(".zoom-titre").textContent = titre;
+  function afficher(){
+    const style = getComputedStyle(page);
+    const largeur = page.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    img.style.width = Math.max(1, largeur) * niveau / 100 + "px";
+    v.querySelector("output").textContent = niveau + " %";
+    bouton("moins").disabled = niveau <= 50;
+    bouton("plus").disabled = niveau >= 300;
+  }
+  function changer(delta){ niveau = Math.min(300, Math.max(50, niveau + delta)); afficher(); }
+  bouton("moins").onclick = () => changer(-25);
+  bouton("plus").onclick = () => changer(25);
+  bouton("ajuster").onclick = () => { niveau = 100; afficher(); page.scrollTo(0,0); };
+  bouton("fermer").onclick = () => v.close();
+  bouton("plein").hidden = !document.fullscreenEnabled;
+  bouton("plein").onclick = async () => {
+    try{
+      if(document.fullscreenElement === v) await document.exitFullscreen();
+      else await v.requestFullscreen();
+    }catch(e){ v.querySelector(".zoom-aide").textContent = "Le plein écran est indisponible. Tu peux continuer à utiliser le zoom."; }
+  };
+  v.addEventListener("fullscreenchange", () => {
+    bouton("plein").textContent = document.fullscreenElement === v ? "Quitter le plein écran" : "Plein écran";
+  });
+  v.addEventListener("keydown", e => {
+    if(e.key === "+" || e.key === "="){ e.preventDefault(); changer(25); }
+    if(e.key === "-"){ e.preventDefault(); changer(-25); }
+    if(e.key === "Escape") e.stopPropagation();
+  });
+  const observer = new ResizeObserver(afficher);
+  v.addEventListener("close", () => {
+    observer.disconnect();
+    document.body.style.overflow = defilement;
+    v.remove();
+    if(precedent && precedent.isConnected) precedent.focus();
+  }, {once:true});
   document.body.appendChild(v);
+  document.body.style.overflow = "hidden";
+  v.showModal();
+  observer.observe(page);
+  afficher();
 }
 
 /* Réinitialisation du mot de passe */
@@ -1164,18 +1237,23 @@ function vueFiches(){
 
 function carteFiche(f, q, avecMatiere){
   const lue = U.lu.includes(f.id);
+  const revoir = (U.revoir || []).includes(f.id);
   const bloque = f.prem && !accesPremium();
-  return `<article class="carte fiche-carte ${lue?"lue":""}" onclick="ouvrirFiche('${f.id}')" tabindex="0" onkeydown="if(event.key==='Enter')ouvrirFiche('${f.id}')">
+  const sections = f.s || [], images = f.img || [];
+  const texte = sections.flatMap(s => s.l || []).join(" ").replace(/<[^>]*>/g, "").trim();
+  const minutes = texte ? Math.max(1, Math.ceil(texte.split(/\s+/).length / 180)) : 0;
+  return `<article class="carte fiche-carte ${lue?"lue":""}" role="button" onclick="ouvrirFiche('${f.id}')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();ouvrirFiche('${f.id}')}">
+    ${!bloque && images.length ? `<img class="fiche-apercu" src="${sourceImage(images[0])}" data-med="${esc(images[0])}" alt="" loading="lazy" onload="this.onload=null;if(this.dataset.med.startsWith('med:'))resoudreImages([this.dataset.med])" onerror="this.hidden=true">` : ""}
     ${bloque ? `<span class="cadenas"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#FBBF24" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg></span>` : ""}
     <div class="rang" style="gap:8px">
       ${avecMatiere ? `<span class="pastille">${esc(nomMat(f.m))}</span>` : ""}
-      ${lue ? `<span class="pastille vert">Lue</span>` : ""}
-      ${f.prem ? `<span class="pastille or">Premium</span>` : `<span class="pastille bleu">Accès libre</span>`}
+      <span class="pastille ${revoir?"or":lue?"vert":""}">${revoir?"À revoir":lue?"Lue":"À lire"}</span>
+      ${f.prem ? `<span class="pastille ${bloque?"or":"vert"}">${bloque?"Premium":"Accès inclus"}</span>` : `<span class="pastille bleu">Accès libre</span>`}
       ${f.pdf ? `<span class="pastille rose">PDF</span>` : ""}
-      ${(f.img||[]).length ? `<span class="pastille bleu">${f.img.length} schéma${f.img.length>1?"s":""}</span>` : ""}
     </div>
     <h3>${surligner(f.t, q)}</h3>
-    <p class="small muted">${avecMatiere ? esc(f.ch) + " · " : ""}${f.pdf && !f.s.length ? "Document PDF" : f.s.length + " sections · " + f.s.reduce((s,x)=>s+x.l.length,0) + " points clés"}</p>
+    ${!bloque && sections.length ? `<p class="fiche-resume">${esc(sections.map(s=>s.h).filter(Boolean).join(" · "))}</p>` : ""}
+    <p class="small muted">${avecMatiere ? esc(f.ch) + " · " : ""}${f.pdf && !sections.length ? "Document PDF" : sections.length ? sections.reduce((s,x)=>s+(x.l||[]).length,0) + " points clés" : images.length ? images.length + " page" + (images.length>1?"s":"") + " à consulter" : "Fiche de révision"}${minutes ? " · Lecture estimée : " + minutes + " min (texte)" : ""}</p>
   </article>`;
 }
 
@@ -1236,17 +1314,26 @@ function ouvrirFiche(id){
       ${(f.img||[]).length ? `<section style="margin-top:26px">
         <p class="eyebrow" style="margin-bottom:12px">Schémas</p>
         <div class="schemas">${f.img.map((u,i) => `<figure>
-          <img src="${sourceImage(u)}" data-med="${esc(u)}" alt="Schéma ${i+1} — ${esc(f.t)}" onclick="zoomer(this.src)" loading="lazy">
-          <figcaption>Schéma ${i+1} · clique pour agrandir</figcaption></figure>`).join("")}</div>
+          <img src="${sourceImage(u)}" data-med="${esc(u)}" alt="Schéma ${i+1} — ${esc(f.t)}" role="button" tabindex="0" aria-haspopup="dialog" onclick="zoomer(this.src,this.alt)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();zoomer(this.src,this.alt)}" loading="lazy">
+          <figcaption><span>Schéma ${i+1}</span><button type="button" class="schema-agrandir" aria-haspopup="dialog" onclick="const image=this.closest('figure').querySelector('img');zoomer(image.src,image.alt)">Agrandir / Zoom</button></figcaption></figure>`).join("")}</div>
       </section>` : ""}
       ${f.note ? `<div class="encadre"><b>À retenir —</b> ${f.note}</div>` : ""}
       <div class="rang" style="margin-top:32px;gap:10px">
         <button class="btn ${lue?"":"primaire"}" onclick="marquerLue('${f.id}')">${lue ? "Marquer comme non lue" : "J'ai lu cette fiche"}</button>
+        <button class="btn" aria-pressed="${(U.revoir||[]).includes(f.id)}" onclick="marquerARevoir('${f.id}')">${(U.revoir||[]).includes(f.id) ? "Retirer de mes fiches à revoir" : "À revoir plus tard"}</button>
         <button class="btn" onclick="lancerQuiz('${f.m}',10)">S'entraîner sur ${esc(m.nom)}</button>
       </div>
     </article>`;
   window.scrollTo({top:0});
   if((f.img||[]).some(u => u.startsWith("med:"))) resoudreImages(f.img);
+}
+
+function marquerARevoir(id){
+  U.revoir = U.revoir || [];
+  const i = U.revoir.indexOf(id);
+  if(i >= 0) U.revoir.splice(i,1);
+  else U.revoir.push(id);
+  sauver(); ouvrirFiche(id);
 }
 
 function marquerLue(id){

@@ -1,0 +1,41 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function connecte() { return request.auth != null; }
+    function estDev() {
+      return connecte()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.dev == true;
+    }
+
+    match /users/{uid} {
+      allow read: if connecte() && (request.auth.uid == uid || estDev());
+      // Le rôle ne peut jamais être attribué par le propriétaire du compte.
+      // Un développeur existant conserve la gestion des autres comptes.
+      allow create: if estDev() || (connecte() && request.auth.uid == uid
+        && request.resource.data.dev == false);
+      allow update: if estDev() || (connecte() && request.auth.uid == uid
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['dev']));
+      // Réserver la suppression évite la recréation d'un compte avec un nouveau rôle.
+      allow delete: if estDev();
+    }
+
+    match /contenu/{doc} {
+      allow read: if estDev() || (connecte() && doc in ['base', 'meta']);
+      allow write: if estDev();
+    }
+    match /droits/{uid} {
+      allow read: if connecte() && (request.auth.uid == uid || estDev());
+      allow write: if false;
+    }
+    // La séparation du catalogue et des contenus premium reste à effectuer.
+    match /medias/{doc} {
+      allow read: if connecte();
+      allow write: if estDev();
+    }
+    match /ventes/{id} {
+      allow read: if estDev();
+      allow write: if false;
+    }
+  }
+}
