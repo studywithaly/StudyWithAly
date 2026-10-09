@@ -28,3 +28,21 @@
   for = "/.well-known/assetlinks.json"
   [headers.values]
     Content-Type = "application/json"
+
+[[redirects]]
+  from = "/.well-known/vigie-audit.txt"
+  to = "/vigie-audit.txt"
+  status = 200
+  force = true
+
+[[headers]]
+  for = "/.well-known/vigie-audit.txt"
+  [headers.values]
+    Content-Type = "text/plain; charset=utf-8"
+    Cache-Control = "no-store"
+
+[[headers]]
+  for = "/vigie-audit.txt"
+  [headers.values]
+    Content-Type = "text/plain; charset=utf-8"
+    Cache-Control = "no-store"
