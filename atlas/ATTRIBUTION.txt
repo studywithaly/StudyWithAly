@@ -1,0 +1,14 @@
+BodyParts3D, © The Database Center for Life Science licensed under CC Attribution 4.0 International.
+Source: https://dbarchive.biosciencedbc.jp/en/bodyparts3d/download.html
+License: https://dbarchive.biosciencedbc.jp/en/bodyparts3d/lic.html (updated 2025-02-27; checked 2026-11-02)
+License text: https://creativecommons.org/licenses/by/4.0/legalcode
+Version: BodyParts3D 4.0, IS-A tree, 99% polygon reduction archive.
+Original OBJ files retained without geometry or coordinate changes. Display colors are pedagogical.
+Some original OBJ headers mention the historical CC BY-SA 2.1 Japan license. The archive's current official license page specifies CC BY 4.0 for this database. Original notices are preserved in each file.
+Per-file source identity, FMA mappings and SHA-256 hashes: models/registry.json.
+No independent clinical validation. Not a patient-specific model.
+
+Three.js 0.180.0, Copyright © 2010-2025 three.js authors. MIT license retained in vendor/THREE-LICENSE.txt.
+OrbitControls.js and OBJLoader.js are from the same distribution; only their module import path was adjusted for local hosting.
+
+Scientific sheets: original concise French educational summaries, with references linked in each sheet. Fields not yet documented are explicitly indicated. No third-party article text is reproduced.
