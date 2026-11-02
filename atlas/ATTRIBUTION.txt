@@ -12,3 +12,23 @@ Three.js 0.180.0, Copyright © 2010-2025 three.js authors. MIT license retained 
 OrbitControls.js and OBJLoader.js are from the same distribution; only their module import path was adjusted for local hosting.
 
 Scientific sheets: original concise French educational summaries, with references linked in each sheet. Fields not yet documented are explicitly indicated. No third-party article text is reproduced.
+
+Full-body extension (2026-11-02):
+BodyParts3D original coordinates retained in mm, Z-up. Derived GLB files use 16-bit position quantization and Meshopt compression; coarse variants use bounded mesh simplification. Raw source hashes, archive paths, bounds, variants and hashes: catalog/body.json.
+
+Z-Anatomy selected meshes, CC BY-SA 4.0, https://creativecommons.org/licenses/by-sa/4.0/
+Upstream: https://github.com/Z-Anatomy/Models-of-human-anatomy
+Exported meshes: https://github.com/nqwrc/3d-anatomy/tree/master/public/models
+Contributors include Vincent-Hugues Talbot, BodyParts3D / DBCLS, and University of Dundee CAHID (cranial nerves, CC BY 4.0).
+Modifications: bake source instance matrices, metres to mm and axis conversion, remove materials, quantize and simplify coarse variants. Each reference retains its own origin. Source files, node names and SHA-256 hashes: catalog/supplement.json. These derived Z assets remain CC BY-SA 4.0. No upstream software or Wikipedia definitions copied.
+Excluded: Z brain / white matter from uncertain University of Washington provenance; Dundee inner ear CC BY-NC-SA 4.0; Lissie Cowley kidney CC BY-NC 4.0. No nucleus/nuclei meshes imported from nervous source.
+Upstream notices: licenses/Z-LICENSE.txt, licenses/Z-NOTICE.txt, licenses/Z-MODELS.txt.
+
+Human Reference Atlas female reference organs, CC BY 4.0, https://creativecommons.org/licenses/by/4.0/
+Kristen Browne, NIAID, NIH, and Human Reference Atlas collaborators.
+Library: https://hubmapconsortium.github.io/ccf/pages/ccf-3d-reference-library.html
+Versioned source PURLs and asset URLs: catalog/supplement.json (hraSources).
+Modifications: bake original node world matrices, axis and unit conversion, remove materials, 16-bit quantization and coarse mesh simplification. Original global reference positions retained, separate from male references.
+
+Meshoptimizer 1.3.0, Copyright (C) 2016-2026 Arseny Kapoulkine, MIT. Browser decoder notice: vendor/MESHOPT-LICENSE.txt.
+GLTFLoader.js and BufferGeometryUtils.js: Three.js 0.180.0, MIT, same vendor/THREE-LICENSE.txt. Only relative import paths changed.
