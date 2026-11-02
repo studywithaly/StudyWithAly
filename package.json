@@ -5,6 +5,10 @@
   "description": "Plateforme de revision - fiches, quiz et boutique",
   "dependencies": {
     "firebase-admin": "^12.7.0",
-    "stripe": "^16.12.0"
+    "stripe": "^16.12.0",
+    "three": "0.180.0"
+  },
+  "scripts": {
+    "test:atlas": "node --test tests/atlas*.test.mjs"
   }
 }
