@@ -23,3 +23,15 @@
 
 .atlas-return{display:none}
 @media(max-width:650px){.atlas-return{display:inline-block;margin:10px 0}.atlas-layers{order:3}.atlas-facts{order:2;scroll-margin-top:16px}.atlas-stage{scroll-margin-top:16px}}
+
+/* Multi-scale navigation extends the original three-panel atlas. */
+.atlas-crumbs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 16px;font-size:12px}.atlas-crumbs button{padding:6px 9px}.atlas-crumbs [aria-current]{color:var(--bleu);border-color:var(--bleu)}
+.atlas-body .atlas-stage{height:650px;background:radial-gradient(ellipse at 50% 45%,color-mix(in srgb,var(--atlas-panel),#5667a0 12%),var(--atlas-bg) 75%)}
+.atlas-context{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px}.atlas-context h2{font-size:20px;margin-top:4px}.atlas-context label{font-size:11px;display:grid;gap:4px;color:var(--atlas-muted)}.atlas-context select{max-width:250px;font-size:12px}
+.atlas-layer-list{max-height:465px;overflow:auto;margin:8px -6px 0;padding:0 6px}.atlas-layer-tools{display:flex;gap:7px;align-items:center}.atlas-layer-tools input[type=range]{width:100%;min-width:40px;flex:1}.atlas-layer-tools button{font-size:10px;padding:4px 6px;margin-top:6px}
+.atlas-node-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:12px}.atlas-node-list button{text-align:left;font-size:12px;line-height:1.4}.atlas-node-list small{display:block;font-size:10px;color:var(--atlas-muted);margin-top:3px}.atlas-planned{border-style:dashed!important;color:var(--atlas-muted)!important}
+.atlas-regions,.atlas-history,.atlas-sources{margin-top:12px}.atlas-history ol{padding-left:18px;margin-top:10px;display:flex;flex-wrap:wrap;gap:7px 22px;font-size:12px}.atlas-history button{font-size:11px;padding:5px 8px}.atlas-coverage-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}.atlas-sources summary{cursor:pointer;font-size:13px}.atlas-sources a{font-size:12px}.atlas-body [data-page-info]{font-size:11px}.atlas-body .atlas-tip{max-width:min(300px,calc(100vw - 20px))}
+@media(max-width:1250px){.atlas-body .atlas-stage{height:600px}}
+@media(max-width:650px){.atlas-body .atlas-stage{height:520px}.atlas-context select{max-width:100%;width:100%}.atlas-context label{width:100%}.atlas-node-list{grid-template-columns:1fr 1fr}.atlas-layer-list{max-height:420px}.atlas-coverage-grid{grid-template-columns:1fr}.atlas-crumbs{font-size:11px}.atlas-crumbs button{font-size:11px}}
+
+@media(min-width:651px){.atlas-body .atlas-stage{height:clamp(400px,calc(100dvh - 150px),650px)}}

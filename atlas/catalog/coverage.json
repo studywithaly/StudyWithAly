@@ -1,0 +1,233 @@
+{
+  "date": "2026-11-02",
+  "objects": 4733,
+  "systems": [
+    {
+      "id": "nervous",
+      "name": "Système nerveux",
+      "objects": 416,
+      "references": {
+        "bp4": 166,
+        "z-anatomy": 250,
+        "hra-female": 0
+      },
+      "examples": [
+        "Left anterior ethmoidal nerve",
+        "Left ciliary ganglion",
+        "Left frontal nerve",
+        "Inferior branch of left oculomotor nerve"
+      ],
+      "missing": "Histologie, neurones, synapses ; référence Z distincte pour la moelle et les nerfs périphériques."
+    },
+    {
+      "id": "skeletal",
+      "name": "Squelette",
+      "objects": 499,
+      "references": {
+        "bp4": 208,
+        "z-anatomy": 277,
+        "hra-female": 14
+      },
+      "examples": [
+        "Right iliotibial tract",
+        "Left iliotibial tract",
+        "Set of dorsal metacarpal arteries",
+        "Set of dorsal metacarpal arteries"
+      ],
+      "missing": "Microarchitecture osseuse et squelette féminin complet."
+    },
+    {
+      "id": "muscular",
+      "name": "Muscles",
+      "objects": 1086,
+      "references": {
+        "bp4": 417,
+        "z-anatomy": 669,
+        "hra-female": 0
+      },
+      "examples": [
+        "Left inferior oblique",
+        "Left inferior rectus",
+        "Left lateral rectus",
+        "Left levator palpebrae superioris"
+      ],
+      "missing": "Fibres, faisceaux et sarcomères ; musculature féminine complète."
+    },
+    {
+      "id": "cardiovascular",
+      "name": "Cœur et vaisseaux",
+      "objects": 1685,
+      "references": {
+        "bp4": 1009,
+        "z-anatomy": 676,
+        "hra-female": 0
+      },
+      "examples": [
+        "Anterior communicating artery",
+        "anterior inferior cerebellar artery",
+        "Anterior inferior cerebellar artery",
+        "Right anterior spinal artery"
+      ],
+      "missing": "Microcirculation et réseau capillaire complet."
+    },
+    {
+      "id": "respiratory",
+      "name": "Respiration",
+      "objects": 105,
+      "references": {
+        "bp4": 105,
+        "z-anatomy": 0,
+        "hra-female": 0
+      },
+      "examples": [
+        "Inferior lingular bronchial tree",
+        "Left medial basal segmental bronchial tree",
+        "Left anterior segmental bronchial tree",
+        "Left apical segmental bronchial tree"
+      ],
+      "missing": "Bronchioles terminales et scène alvéolaire microscopique."
+    },
+    {
+      "id": "digestive",
+      "name": "Digestion",
+      "objects": 117,
+      "references": {
+        "bp4": 117,
+        "z-anatomy": 0,
+        "hra-female": 0
+      },
+      "examples": [
+        "Gingiva of upper jaw",
+        "Gingiva of lower jaw",
+        "Left lower first secondary molar tooth",
+        "Left lower first secondary premolar tooth"
+      ],
+      "missing": "Couches histologiques de la paroi digestive."
+    },
+    {
+      "id": "urinary",
+      "name": "Appareil urinaire",
+      "objects": 94,
+      "references": {
+        "bp4": 9,
+        "z-anatomy": 0,
+        "hra-female": 85
+      },
+      "examples": [
+        "Left ureter",
+        "Left kidney",
+        "Right ureter",
+        "Right kidney"
+      ],
+      "missing": "Néphron, glomérule et barrière de filtration microscopique."
+    },
+    {
+      "id": "endocrine",
+      "name": "Glandes endocrines",
+      "objects": 4,
+      "references": {
+        "bp4": 4,
+        "z-anatomy": 0,
+        "hra-female": 0
+      },
+      "examples": [
+        "Pineal body",
+        "Pituitary gland",
+        "Left adrenal gland",
+        "Right adrenal gland"
+      ],
+      "missing": "Thyroïde, parathyroïdes et histologie glandulaire absentes de cette livraison."
+    },
+    {
+      "id": "lymphatic",
+      "name": "Lymphatique et immunitaire",
+      "objects": 161,
+      "references": {
+        "bp4": 3,
+        "z-anatomy": 158,
+        "hra-female": 0
+      },
+      "examples": [
+        "Spleen",
+        "Left lobe of thymus",
+        "Right lobe of thymus",
+        "Left lobe of thymus"
+      ],
+      "missing": "Exhaustivité des ganglions et des microvaisseaux."
+    },
+    {
+      "id": "reproductive",
+      "name": "Appareil reproducteur",
+      "objects": 38,
+      "references": {
+        "bp4": 18,
+        "z-anatomy": 0,
+        "hra-female": 20
+      },
+      "examples": [
+        "Deep dorsal vein of penis",
+        "Superficial dorsal vein of penis",
+        "Corpus cavernosum of penis",
+        "Corpus spongiosum of penis"
+      ],
+      "missing": "Histologie, gamètes et exhaustivité des sous-structures."
+    },
+    {
+      "id": "skin",
+      "name": "Peau",
+      "objects": 2,
+      "references": {
+        "bp4": 1,
+        "z-anatomy": 0,
+        "hra-female": 1
+      },
+      "examples": [
+        "Skin",
+        "VH_F_skin"
+      ],
+      "missing": "Couches cutanées, follicules et glandes microscopiques."
+    },
+    {
+      "id": "sensory",
+      "name": "Organes sensoriels",
+      "objects": 29,
+      "references": {
+        "bp4": 29,
+        "z-anatomy": 0,
+        "hra-female": 0
+      },
+      "examples": [
+        "Anterior chamber of left eyeball",
+        "Left choroid",
+        "Left choroid",
+        "Left cornea"
+      ],
+      "missing": "Microanatomie sensorielle ; aucun complément Z non commercial importé."
+    },
+    {
+      "id": "connective",
+      "name": "Articulations et tissus conjonctifs",
+      "objects": 497,
+      "references": {
+        "bp4": 148,
+        "z-anatomy": 349,
+        "hra-female": 0
+      },
+      "examples": [
+        "Check ligament of left lateral rectus",
+        "Left corona ciliaris",
+        "Left common tendinous ring",
+        "Check ligament of left medial rectus"
+      ],
+      "missing": "Exhaustivité de tous les ligaments et tendons, microarchitecture."
+    }
+  ],
+  "limitations": [
+    "Les objets source incluent des subdivisions et des références de plusieurs individus : ce nombre ne désigne pas autant d’organes distincts.",
+    "Les trois références ne sont pas fusionnées spatialement.",
+    "La référence féminine reste partielle : peau, bassin, appareil reproducteur et urinaire.",
+    "Les niveaux tissulaires/cellulaires/synaptiques ne sont pas simulés par un simple agrandissement.",
+    "La plupart des fiches sont des fiches de repérage ; nomenclature française et descriptions détaillées encore partielles."
+  ],
+  "lod": "GLB Meshopt : détail source quantifié à 16 bits ; niveau simplifié à distance pour les maillages dépassant 600 triangles. Chargement à la demande par région et système."
+}

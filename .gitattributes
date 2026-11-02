@@ -1,2 +1,4 @@
 # Preserve exact original model bytes and their registered SHA-256 on every platform.
 atlas/models/*.obj -text
+
+atlas/assets/**/*.glb -text

@@ -1,3 +1,4 @@
+import {canonicalSystem} from './body-schema.mjs';
 export const sources = {
   bp: {title:'BodyParts3D 4.0 — DBCLS / archive NBDC',url:'https://dbarchive.biosciencedbc.jp/en/bodyparts3d/download.html'},
   cns: {title:'OpenStax, Anatomy and Physiology 2e, §13.2',url:'https://openstax.org/books/anatomy-and-physiology-2e/pages/13-2-the-central-nervous-system'},
@@ -36,8 +37,8 @@ const rows = [
  ['vagus','Nerf vague','Nervus vagus','vagus nerve','peripheral','Tête, thorax, abdomen','Fonctions sensitives, motrices et parasympathiques.','Dixième paire de nerfs crâniens.','','','pns',[]]
 ];
 export const structures = rows.map(([id,fr,latin,en,system,region,short,morphology,advanced,pathologies,source,related])=>({id,fr,latin,en,system,region,short,morphology,advanced,pathologies,sources:[source,'bp'],related,synonyms: id==='vagus'?['X','nerf pneumogastrique']:id==='medulla'?['moelle allongée']:[],parent:'encephalon'}));
-export function normalize(value){return value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();}
+export function normalize(value){return value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/œ/g,'oe').replace(/æ/g,'ae');}
 export function searchStructures(query,system='all',region='all'){
  const terms=normalize(query).trim().split(/\s+/);
- return structures.filter(s=>(system==='all'||s.system===system)&&(region==='all'||s.region===region)&&terms.every(t=>normalize([s.fr,s.latin,s.en,s.region,s.system,systems.find(x=>x.id===s.system)?.name,...s.synonyms].join(' ')).includes(t)));
+ return structures.filter(s=>(system==='all'||s.system===system||canonicalSystem(s.system)===system)&&(region==='all'||s.region===region)&&terms.every(t=>normalize([s.fr,s.latin,s.en,s.region,s.system,systems.find(x=>x.id===s.system)?.name,...s.synonyms].join(' ')).includes(t)));
 }
