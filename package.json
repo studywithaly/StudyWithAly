@@ -9,6 +9,6 @@
     "three": "0.180.0"
   },
   "scripts": {
-    "test:atlas": "node --test tests/atlas.test.mjs"
+    "test:atlas": "node --test tests/atlas*.test.mjs"
   }
 }

@@ -1,5 +1,5 @@
 [build]
-  command = "npm install"
+  command = "npm ci && npm run test:atlas"
   publish = "."
   functions = "netlify/functions"
 

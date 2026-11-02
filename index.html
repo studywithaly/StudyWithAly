@@ -1252,9 +1252,9 @@ const App = {
     VUE = v;
     document.querySelectorAll(".nav-lien").forEach(b => b.classList.toggle("actif", b.dataset.vue === v));
     const plus=document.querySelector('.nav-plus');
-    if(plus)plus.classList.toggle('actif',['boutique','bibliotheque','profil','dev'].includes(v));
+    if(plus)plus.classList.toggle('actif',['atlas','boutique','bibliotheque','profil','dev'].includes(v));
     $("#mini-plan").textContent = libellePlan(U);
-    const rendus = { aujourdhui:window.vueAujourdhui||vueFiches, fiches:vueFiches, quiz:vueQuiz, flashcards:vueFlashcards, progression:vueProgression, boutique:vueBoutique, bibliotheque:vueBibliotheque, profil:vueProfil, dev:vueDev };
+    const rendus = { atlas:window.vueAtlas||vueFiches, aujourdhui:window.vueAujourdhui||vueFiches, fiches:vueFiches, quiz:vueQuiz, flashcards:vueFlashcards, progression:vueProgression, boutique:vueBoutique, bibliotheque:vueBibliotheque, profil:vueProfil, dev:vueDev };
     $("#zone").innerHTML = (rendus[v] || vueFiches)();
     window.scrollTo({top:0});
   },

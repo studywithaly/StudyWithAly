@@ -31,11 +31,12 @@ export function createViewer(host,{onHover,onSelect,onStatus}){
  function pick(e){const r=canvas.getBoundingClientRect();pointer.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);raycaster.setFromCamera(pointer,camera);const meshes=[];each(m=>{if(m.visible)meshes.push(m);});
    const hit=raycaster.intersectObjects(meshes,false).find(hit=>!clip||clip.distanceToPoint(hit.point)>=0);return hit?.object.userData.structure||null;}
  const move=e=>{if(e.pointerType==='touch')return;hovered=pick(e);apply();onHover(hovered,e);};
- const leave=()=>{hovered=null;apply();onHover(null);};let down=null;
- const start=e=>{down={x:e.clientX,y:e.clientY};};
- const end=e=>{if(down&&Math.hypot(e.clientX-down.x,e.clientY-down.y)<5){const id=pick(e);if(id)onSelect(id);}down=null;};
+ const leave=()=>{hovered=null;apply();onHover(null);};let down=null,gesture=false;const pointers=new Set();
+ const start=e=>{pointers.add(e.pointerId);if(pointers.size>1){gesture=true;down=null;}else{down={id:e.pointerId,x:e.clientX,y:e.clientY};}};
+ const end=e=>{if(!gesture&&down?.id===e.pointerId&&Math.hypot(e.clientX-down.x,e.clientY-down.y)<5){const id=pick(e);if(id)onSelect(id);}pointers.delete(e.pointerId);down=null;if(!pointers.size)gesture=false;};
+ const cancel=e=>{pointers.delete(e.pointerId);down=null;if(!pointers.size)gesture=false;};
  const key=e=>{if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','+','=','-','r','R'].includes(e.key)){e.preventDefault();const offset=camera.position.clone().sub(controls.target);if(e.key.startsWith('Arrow')){const axis=e.key==='ArrowLeft'||e.key==='ArrowRight'?new T.Vector3(0,0,1):new T.Vector3(1,0,0);offset.applyAxisAngle(axis,['ArrowLeft','ArrowUp'].includes(e.key)?.12:-.12);}else if(e.key==='r'||e.key==='R'){reset();return;}else offset.multiplyScalar(e.key==='-'?1.1:.9);camera.position.copy(controls.target).add(offset);controls.update();render();}};
- canvas.addEventListener('pointermove',move);canvas.addEventListener('pointerleave',leave);canvas.addEventListener('pointerdown',start);canvas.addEventListener('pointerup',end);canvas.addEventListener('keydown',key);
+ canvas.addEventListener('pointermove',move);canvas.addEventListener('pointerleave',leave);canvas.addEventListener('pointerdown',start);canvas.addEventListener('pointerup',end);canvas.addEventListener('pointercancel',cancel);canvas.addEventListener('keydown',key);
  canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();onStatus('Le contexte graphique a été perdu. Revenez dans l’Atlas pour recharger la vue.');});
  return {
    async load(registry){
