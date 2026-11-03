@@ -18,10 +18,10 @@ Aucune garantie d’inviolabilité : ces mesures réduisent des risques vérifi�
 
 ## Vérifications
 
-- 40 tests automatisés du site, dont géométries, navigation, progression, refus des appels sans identité, faux webhook, injections HTML et échappement des actions.
+- 43 tests automatisés du site, dont géométries, navigation, progression, refus des appels sans identité, faux webhook, injections HTML et échappement des actions.
 - 19 contrôles dans l’émulateur Firestore : inscription normale et progression autorisées ; auto-promotion, falsification d’identité, lecture d’un autre compte, modification du contenu ou des droits et accès d’un compte supprimé refusés. Aucun de ces essais n’a écrit dans la base réelle.
 - Contrôle Chrome local sous les nouveaux en-têtes : connexion simulée avec données fictives, fiche contenant une charge HTML de test nettoyée, navigation et atlas 3D fonctionnels sans erreur de sécurité.
-- Aucun achat réel, suppression de compte réel, envoi de notification ou test de saturation n’a été lancé pour cette vérification.
+- Vérification bornée du quota sur une prévisualisation : le serveur renvoie HTTP 429 après dépassement du quota partagé. Aucun test de saturation en production. Aucun achat réel, suppression de compte réel ou envoi de notification n’a été lancé pour cette vérification.
 
 Exécution : `npm test`, `npm audit`, `npm run build`. Règles : `npm exec --yes --package=firebase-tools@15.34.2 -- firebase emulators:exec --only firestore --project demo-swa-security --config firebase.test.json "node tests/firestore.emulator.mjs"`.
 
@@ -40,3 +40,9 @@ Exécution : `npm test`, `npm audit`, `npm run build`. Règles : `npm exec --yes
 - [Firebase Admin : notes de version et migration modulaire](https://firebase.google.com/support/release-notes/admin/node)
 - [PDF.js : avis CVE-2024-4367](https://github.com/mozilla/pdf.js/security/advisories/GHSA-wgrm-67xf-hhpq)
 - [MDN : Content Security Policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy)
+
+
+## Compatibilité du serveur
+
+La publication compile le code JOSE actuel en CommonJS pour Firebase Admin, sans rétrograder sa version cryptographique. Chaque build vérifie le chargement du serveur avec les restrictions de modules AWS Lambda (--no-experimental-require-module). Aucun mode expérimental du moteur n’est nécessaire. Les dépendances serveur verrouillées sont explicitement incluses dans les fonctions ; leur liste doit être revue lors des mises à jour du verrou npm.
+
