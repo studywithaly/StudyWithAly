@@ -41,3 +41,8 @@ Exécution : `npm test`, `npm audit`, `npm run build`. Règles : `npm exec --yes
 - [PDF.js : avis CVE-2024-4367](https://github.com/mozilla/pdf.js/security/advisories/GHSA-wgrm-67xf-hhpq)
 - [MDN : Content Security Policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy)
 
+
+## Compatibilité du serveur
+
+Netlify doit conserver NODE_OPTIONS=--experimental-require-module : le SDK Firebase Admin actuel dépend de modules ESM chargés par CommonJS, fonctionnalité désactivée par défaut dans AWS Lambda. Les dépendances serveur verrouillées sont explicitement incluses dans les fonctions ; leur liste doit être revue lors des mises à jour du verrou npm. Voir la documentation AWS : https://docs.aws.amazon.com/lambda/latest/dg/lambda-nodejs.html .
+
