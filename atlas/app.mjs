@@ -2,7 +2,6 @@ import {structures,sources,searchStructures} from './data.mjs';
 import {bodySystems,canonicalSystem,centerOf,regions} from './body-schema.mjs';
 import {createHierarchy,installBodyCards} from './hierarchy.mjs';
 import {AnatomicalNavigator,ZoomIntent} from './navigation.mjs';
-import {createViewer} from './engine.mjs';
 export {createProgressStore} from './progress.mjs';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const defaults=()=>Object.fromEntries(bodySystems.map(s=>[s.id,{visible:!['muscular','lymphatic','reproductive','connective'].includes(s.id),opacity:s.id==='skin'?.18:s.id==='respiratory'?.6:.95}]));
@@ -110,7 +109,7 @@ export function mount(zone,account){
  (async()=>{try{
   const fetchJson=async url=>{const response=await fetch(url,{signal:abort.signal});if(!response.ok)throw Error(url);return response.json();};
   const packRequest=fetchJson('/atlas/catalog/packs.json').catch(error=>{if(abort.signal.aborted)throw error;return {assets:{}};});
-  const [body,supplement,legacy,packs]=await Promise.all([...['/atlas/catalog/body.json','/atlas/catalog/supplement.json','/atlas/models/registry.json'].map(fetchJson),packRequest]);if(disposed)return;
+  const [body,supplement,legacy,packs,{createViewer}]=await Promise.all([...['/atlas/catalog/body.json','/atlas/catalog/supplement.json','/atlas/models/registry.json'].map(fetchJson),packRequest,import('./engine.mjs')]);if(disposed)return;
   hierarchy=createHierarchy(body,supplement,legacy);installBodyCards(hierarchy);
   $('[data-coverage]').innerHTML=`<p class="small">${hierarchy.models.length} objets source · 3 références distinctes. La présence d’un système ne signifie pas qu’il est exhaustif.</p><div class="atlas-coverage-grid">${bodySystems.map(s=>{const matches=hierarchy.models.filter(m=>canonicalSystem(m.system)===s.id);return `<p><strong>${s.name}</strong><br>${matches.length} objets source intégrés</p>`;}).join('')}</div><p class="small">Référence féminine partielle : peau, bassin, appareil reproducteur et urinaire importés. Microanatomie, capillaires complets, arborisation bronchique terminale, tous les ligaments et toute la nomenclature française restent à enrichir.</p>`;
   viewer=createViewer($('.atlas-stage'),{bundles:packs.assets,onHover:hover,onSelect:select,onExplore:explore,onZoom:zoom,onStatus:message});syncLayers();
