@@ -21,5 +21,15 @@ while(true){
  }catch(error){if(error.code!=='ENOENT')throw error;}
  const parent=path.dirname(dir);if(parent===dir)throw Error('JOSE package not found');dir=parent;
 }
-execFileSync(process.execPath,['--no-experimental-require-module','-e',"require('./server/firebase-admin.cjs').auth; require('./netlify/functions/site-api.js')"],{stdio:'inherit'});
+execFileSync(process.execPath,['--no-experimental-require-module','-e',`
+ require('./server/firebase-admin.cjs').auth; require('./netlify/functions/site-api.js');
+ (async()=>{
+  const jose=require('jose');
+  const {publicKey,privateKey}=await jose.generateKeyPair('RS256');
+  const token=await new jose.SignJWT({test:true}).setProtectedHeader({alg:'RS256'}).setIssuer('local-build-test').setExpirationTime('1m').sign(privateKey);
+  await jose.jwtVerify(token,publicKey,{issuer:'local-build-test',algorithms:['RS256']});
+  let refused=false;try{await jose.jwtVerify(token.slice(0,-8)+'AAAAAAAA',publicKey,{algorithms:['RS256']});}catch{refused=true;}
+  if(!refused)throw Error('Invalid signature accepted');
+ })().catch(error=>{console.error(error.name);process.exitCode=1;});
+`],{stdio:'inherit'});
 console.log('Server cryptography prepared and verified with Lambda module restrictions.');
