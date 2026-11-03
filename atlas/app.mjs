@@ -2,7 +2,6 @@ import {structures,sources,searchStructures} from './data.mjs';
 import {bodySystems,canonicalSystem,centerOf,regions} from './body-schema.mjs';
 import {createHierarchy,installBodyCards} from './hierarchy.mjs';
 import {AnatomicalNavigator,ZoomIntent} from './navigation.mjs';
-import {createViewer} from './engine.mjs';
 export {createProgressStore} from './progress.mjs';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const defaults=()=>Object.fromEntries(bodySystems.map(s=>[s.id,{visible:!['muscular','lymphatic','reproductive','connective'].includes(s.id),opacity:s.id==='skin'?.18:s.id==='respiratory'?.6:.95}]));
@@ -109,10 +108,11 @@ export function mount(zone,account){
  renderList();
  (async()=>{try{
   const fetchJson=async url=>{const response=await fetch(url,{signal:abort.signal});if(!response.ok)throw Error(url);return response.json();};
-  const [body,supplement,legacy]=await Promise.all(['/atlas/catalog/body.json','/atlas/catalog/supplement.json','/atlas/models/registry.json'].map(fetchJson));if(disposed)return;
+  const packRequest=fetchJson('/atlas/catalog/packs.json').catch(error=>{if(abort.signal.aborted)throw error;return {assets:{}};});
+  const [body,supplement,legacy,packs,{createViewer}]=await Promise.all([...['/atlas/catalog/body.json','/atlas/catalog/supplement.json','/atlas/models/registry.json'].map(fetchJson),packRequest,import('./engine.mjs')]);if(disposed)return;
   hierarchy=createHierarchy(body,supplement,legacy);installBodyCards(hierarchy);
   $('[data-coverage]').innerHTML=`<p class="small">${hierarchy.models.length} objets source · 3 références distinctes. La présence d’un système ne signifie pas qu’il est exhaustif.</p><div class="atlas-coverage-grid">${bodySystems.map(s=>{const matches=hierarchy.models.filter(m=>canonicalSystem(m.system)===s.id);return `<p><strong>${s.name}</strong><br>${matches.length} objets source intégrés</p>`;}).join('')}</div><p class="small">Référence féminine partielle : peau, bassin, appareil reproducteur et urinaire importés. Microanatomie, capillaires complets, arborisation bronchique terminale, tous les ligaments et toute la nomenclature française restent à enrichir.</p>`;
-  viewer=createViewer($('.atlas-stage'),{onHover:hover,onSelect:select,onExplore:explore,onZoom:zoom,onStatus:message});syncLayers();
+  viewer=createViewer($('.atlas-stage'),{bundles:packs.assets,onHover:hover,onSelect:select,onExplore:explore,onZoom:zoom,onStatus:message});syncLayers();
   navigator=new AnatomicalNavigator({nodes:hierarchy.nodes,camera:()=>viewer.camera(),load:async(n,options)=>{message(`Chargement de ${n.name}…`);return viewer.showScene(n,hierarchy.sceneModels(n.id,layers),options);},onChange:(n,result)=>{if(disposed)return;loading=false;loaded=new Set(result.loaded);intent.reset(performance.now());message(`${result.objects}/${result.requested} objets · ${loaded.size} structures sélectionnables${result.failures?` · ${result.failures} échec(s)`:''}`);$('[data-lod]').textContent=result.lod.toUpperCase();$('[data-hemisphere]').value='all';$('[data-cut]').value='';selected=null;renderNavigation();if(card(n.id)){selected=n.id;facts(n.id);}else $('[data-facts]').innerHTML=`<p class="eyebrow">${esc(hierarchy.referenceNames[n.reference])}</p><h2>${esc(n.name)}</h2><p>${esc(n.description||'Sélectionnez une structure pour lire sa fiche.')}</p><p class="atlas-note">${n.models.length} objets source disponibles dans ce niveau. Les couches masquées sont chargées à la demande.</p>`;if(mode!=='path')exercise();},onMissing:n=>{message(`${n.name} : niveau en cours d’intégration.`);$('[data-facts]').innerHTML=`<h2>${esc(n.name)}</h2><p>${esc(n.description)}</p><h3>Ressource nécessaire</h3><p>${esc(n.needed)}</p>`;},onError:error=>{console.error('Atlas scene',error);loading=false;message('Chargement incomplet. La vue précédente est conservée ; réessayez la navigation.');}});
   await go('body',{force:true});
  }catch(error){console.error('Atlas initialization',error);if(!disposed){loading=false;message('Vue 3D indisponible : vérifiez la connexion ou la prise en charge WebGL. Les fiches restent consultables.');renderList();}}})();
