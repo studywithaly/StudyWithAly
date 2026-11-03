@@ -1,3 +1,4 @@
+const TRUSTED_API=Symbol('protected-api-dispatch');
 const {URL}=require('node:url');
 const json=(statusCode,data)=>({statusCode,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'},body:JSON.stringify(data)});
 function header(event,name){const key=Object.keys(event.headers||{}).find(k=>k.toLowerCase()===name.toLowerCase());return key?event.headers[key]:'';}
@@ -10,7 +11,8 @@ function gate(event,{maxBytes=32768,signature=false}={}){
  const origin=header(event,'origin');if(origin&&!publicOrigin(origin))return json(403,{erreur:'Origine non autorisée.'});
  if(header(event,'sec-fetch-site')==='cross-site')return json(403,{erreur:'Requête intersite refusée.'});
  if(!bearer(event))return json(401,{erreur:'Connexion requise.'});
+ if(event[TRUSTED_API]!==true)return json(426,{erreur:'Recharge la page pour utiliser la connexion sécurisée.'});
  const type=(header(event,'content-type')||'').split(';')[0].trim().toLowerCase();if(type!=='application/json')return json(415,{erreur:'Utilise le format JSON.'});
  return null;
 }
-module.exports={json,header,bearer,gate};
+module.exports={json,header,bearer,gate,TRUSTED_API};

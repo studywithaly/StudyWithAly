@@ -35,7 +35,7 @@ const CONFIG_FIREBASE = {
 const UTILISER_STORAGE = false;
 
 /* Paiement : "stripe" utilise les fonctions Netlify, "demo" simule l'achat. */
-const CONFIG_PAIEMENT = { mode:"stripe", base:"/.netlify/functions" };
+const CONFIG_PAIEMENT = { mode:"stripe", base:"/api" };
 
 const MODE_CLOUD = !!(CONFIG_FIREBASE.apiKey && window.firebase);
 let fdb = null, fauth = null;
