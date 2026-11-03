@@ -1,6 +1,7 @@
 const {gate}=require('../../server/security.cjs');
 // Stripe is the payment provider. Only verified events may change entitlements.
-const stripe=require('stripe')(process.env.STRIPE_CLE_SECRETE);
+let stripeInstance;
+const stripeClient=()=>stripeInstance||(stripeInstance=require('stripe')(process.env.STRIPE_CLE_SECRETE));
 const {services}=require('./notifications');
 const reply=(statusCode,body)=>({statusCode,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const objectId=value=>typeof value==='string'?value:value?.id;
@@ -12,6 +13,7 @@ function paidPeriodEnd(invoice){
   return seconds*1000;
 }
 async function effectFor(event,db){
+  const stripe=stripeClient();
   const object=event.data.object;
   if(['checkout.session.completed','checkout.session.async_payment_succeeded'].includes(event.type)){
     const session=await stripe.checkout.sessions.retrieve(object.id);
@@ -84,7 +86,7 @@ exports.handler=async event=>{
   const rejected=gate(event,{maxBytes:1048576,signature:true});if(rejected)return rejected;
   if(event.httpMethod!=='POST')return reply(405,{erreur:'Méthode non autorisée.'});
   let verified;
-  try{verified=stripe.webhooks.constructEvent(event.isBase64Encoded?Buffer.from(event.body,'base64'):event.body,event.headers['stripe-signature'],process.env.STRIPE_SECRET_WEBHOOK);}
+  try{verified=stripeClient().webhooks.constructEvent(event.isBase64Encoded?Buffer.from(event.body,'base64'):event.body,event.headers['stripe-signature'],process.env.STRIPE_SECRET_WEBHOOK);}
   catch{return reply(400,{erreur:'Signature invalide.'});}
   try{const {db,admin}=services();const effect=await effectFor(verified,db);await applyEvent(verified,effect,db,admin);return reply(200,{recu:true});}
   catch(error){console.error('webhook',verified.type,error.code||error.name);return reply(500,{erreur:'Événement non traité ; une nouvelle tentative est nécessaire.'});}
