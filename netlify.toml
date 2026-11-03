@@ -1,96 +1,91 @@
 [build]
-  command = "npm ci && npm test && npm run build"
-  publish = "dist"
-  functions = "netlify/functions"
+command = "npm ci && npm test && npm run build"
+publish = "dist"
+functions = "netlify/functions"
 
 [functions]
-  node_bundler = "esbuild"
+node_bundler = "esbuild"
 
-# le webhook Stripe a besoin du corps brut pour vérifier la signature
-[functions."webhook-stripe"]
-  included_files = []
+  [functions.webhook-stripe]
+  included_files = [ ]
 
-[functions."rappels"]
+  [functions.rappels]
   schedule = "0 * * * *"
 
 [[redirects]]
-  from = "/.well-known/assetlinks.json"
-  to = "/assetlinks.json"
-  status = 200
-  force = true
-
-[[headers]]
-  for = "/service-worker.js"
-  [headers.values]
-    Cache-Control = "no-cache"
-
-[[headers]]
-  for = "/.well-known/assetlinks.json"
-  [headers.values]
-    Content-Type = "application/json"
+from = "/.well-known/assetlinks.json"
+to = "/assetlinks.json"
+status = 200
+force = true
 
 [[redirects]]
-  from = "/.well-known/vigie-audit.txt"
-  to = "/vigie-audit.txt"
-  status = 200
-  force = true
-
-[[headers]]
-  for = "/.well-known/vigie-audit.txt"
-  [headers.values]
-    Content-Type = "text/plain; charset=utf-8"
-    Cache-Control = "no-store"
-
-[[headers]]
-  for = "/vigie-audit.txt"
-  [headers.values]
-    Content-Type = "text/plain; charset=utf-8"
-    Cache-Control = "no-store"
-
-# Pack filenames contain a content hash. Reuse them across visits.
-[[headers]]
-  for = "/atlas/assets/packs/*"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
-    Content-Type = "application/octet-stream"
+from = "/.well-known/vigie-audit.txt"
+to = "/vigie-audit.txt"
+status = 200
+force = true
 
 [[redirects]]
-  from = "/"
-  to = "/index.html"
-  status = 200
-  force = true
+from = "/.netlify/functions/*"
+to = "/.netlify/functions/:splat"
+status = 200
+force = true
+
   [redirects.rate_limit]
-    window_limit = 120
-    window_size = 60
-    aggregate_by = ["ip", "domain"]
+  window_limit = 180
+  window_size = 60
+  aggregate_by = [ "ip", "domain" ]
+
+[[redirects]]
+from = "/*"
+to = "/:splat"
+status = 200
+force = true
+
+  [redirects.rate_limit]
+  window_limit = 1_200
+  window_size = 60
+  aggregate_by = [ "ip", "domain" ]
 
 [[headers]]
-  for = "/*"
+for = "/service-worker.js"
+
   [headers.values]
-    X-Content-Type-Options = "nosniff"
-    X-Frame-Options = "DENY"
-    Referrer-Policy = "strict-origin-when-cross-origin"
-    Permissions-Policy = "camera=(), microphone=(), geolocation=(), usb=()"
-    Strict-Transport-Security = "max-age=31536000"
-    Content-Security-Policy = "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'wasm-unsafe-eval' https://www.gstatic.com; script-src-elem 'self' https://www.gstatic.com; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebaseapp.com https://www.gstatic.com; frame-src 'self' https:; worker-src 'self' blob:; manifest-src 'self'; upgrade-insecure-requests"
+  Cache-Control = "no-cache"
 
-[[redirects]]
-  from = "/index.html"
-  to = "/index.html"
-  status = 200
-  force = true
-  [redirects.rate_limit]
-    window_limit = 120
-    window_size = 60
-    aggregate_by = ["ip", "domain"]
+[[headers]]
+for = "/.well-known/assetlinks.json"
 
-# Broad ceiling leaves room for 3D assets and visitors sharing a network.
-[[redirects]]
-  from = "/*"
-  to = "/:splat"
-  status = 200
-  force = true
-  [redirects.rate_limit]
-    window_limit = 6000
-    window_size = 60
-    aggregate_by = ["ip", "domain"]
+  [headers.values]
+  Content-Type = "application/json"
+
+[[headers]]
+for = "/.well-known/vigie-audit.txt"
+
+  [headers.values]
+  Content-Type = "text/plain; charset=utf-8"
+  Cache-Control = "no-store"
+
+[[headers]]
+for = "/vigie-audit.txt"
+
+  [headers.values]
+  Content-Type = "text/plain; charset=utf-8"
+  Cache-Control = "no-store"
+
+[[headers]]
+for = "/atlas/assets/packs/*"
+
+  [headers.values]
+  Cache-Control = "public, max-age=31536000, immutable"
+  Content-Type = "application/octet-stream"
+
+[[headers]]
+for = "/*"
+
+  [headers.values]
+  X-Content-Type-Options = "nosniff"
+  X-Frame-Options = "DENY"
+  Referrer-Policy = "strict-origin-when-cross-origin"
+  Permissions-Policy = "camera=(), microphone=(), geolocation=(), usb=()"
+  Strict-Transport-Security = "max-age=31536000"
+  Content-Security-Policy = "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'wasm-unsafe-eval' https://www.gstatic.com; script-src-elem 'self' https://www.gstatic.com; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebaseapp.com https://www.gstatic.com; frame-src 'self' https:; worker-src 'self' blob:; manifest-src 'self'; upgrade-insecure-requests"

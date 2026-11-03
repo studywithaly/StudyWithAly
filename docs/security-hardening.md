@@ -6,7 +6,7 @@ Aucune garantie d’inviolabilité : ces mesures réduisent des risques vérifi�
 
 - Publication d’une liste explicite de fichiers publics dans `dist`. Les fonctions serveur, règles Firestore, tests, dépendances et fichiers de configuration ne sont plus copiés dans le site public. Le dépôt GitHub reste public ; la sécurité ne repose pas sur le secret du code.
 - Validation précoce des méthodes, tailles de requêtes, format JSON, origine navigateur et présence d’un jeton avant les lectures de données. Vérification Firebase des jetons révoqués maintenue ; le webhook Stripe conserve son contrôle de signature.
-- Limitations Netlify par IP et domaine : page d’accueil et `index.html` 120/minute ; contenu API 120/minute ; paiements et portail 10/minute ; activation de licence 6/minute ; préférences de notifications 30/minute ; plafond général 6 000/minute pour laisser fonctionner les ressources 3D. Ces limites ne constituent pas une protection absolue contre une attaque distribuée ; leur application peut être différée de quelques secondes et des utilisateurs derrière une même IP partagent un quota.
+- Deux limitations Netlify par IP et domaine, adaptées à la limite de deux règles du forfait : 180 requêtes/minute pour les fonctions API ; 1 200 requêtes/minute pour le reste du site, y compris les pages et ressources 3D. Ces limites ne constituent pas une protection absolue contre une attaque distribuée ; leur application peut être différée de quelques secondes et des utilisateurs derrière une même IP partagent un quota.
 - Règles Firestore avec identité de document et adresse e-mail contrôlées à la création ; seuls les champs de profil et de progression prévus sont modifiables par le propriétaire. Rôle, identité, date de création et droits commerciaux ne sont pas librement modifiables. Les accès entre comptes et aux droits restent interdits hors administration.
 - Identité affichée issue du chemin Firestore / Firebase Auth plutôt que du champ `id` éditable ; normalisation des historiques et listes avant affichage.
 - Nettoyage des textes riches avec DOMPurify et encodage des arguments des actions. Rejet des URL actives et des images SVG/HTML encodées. Les styles pédagogiques simples sont conservés.
@@ -17,7 +17,7 @@ Aucune garantie d’inviolabilité : ces mesures réduisent des risques vérifi�
 
 ## Vérifications
 
-- 38 tests automatisés du site, dont géométries, navigation, progression, refus des appels sans identité, faux webhook, injections HTML et échappement des actions.
+- 40 tests automatisés du site, dont géométries, navigation, progression, refus des appels sans identité, faux webhook, injections HTML et échappement des actions.
 - 19 contrôles dans l’émulateur Firestore : inscription normale et progression autorisées ; auto-promotion, falsification d’identité, lecture d’un autre compte, modification du contenu ou des droits et accès d’un compte supprimé refusés. Aucun de ces essais n’a écrit dans la base réelle.
 - Contrôle Chrome local sous les nouveaux en-têtes : connexion simulée avec données fictives, fiche contenant une charge HTML de test nettoyée, navigation et atlas 3D fonctionnels sans erreur de sécurité.
 - Aucun achat réel, suppression de compte réel, envoi de notification ou test de saturation n’a été lancé pour cette vérification.

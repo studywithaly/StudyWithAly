@@ -37,4 +37,3 @@ exports.handler = async (event) => {
   }
 };
 
-exports.config={path:'/.netlify/functions/portail-client',rateLimit:{windowLimit:10,windowSize:60,aggregateBy:['ip','domain']}};

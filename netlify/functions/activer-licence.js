@@ -57,4 +57,3 @@ exports.handler = async (event) => {
   }
 };
 
-exports.config={path:'/.netlify/functions/activer-licence',rateLimit:{windowLimit:6,windowSize:60,aggregateBy:['ip','domain']}};

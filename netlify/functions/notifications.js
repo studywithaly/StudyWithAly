@@ -52,4 +52,3 @@ exports.handler = async event => {
 exports.services = services;
 exports.preferences = preferences;
 
-exports.config={path:'/.netlify/functions/notifications',rateLimit:{windowLimit:30,windowSize:60,aggregateBy:['ip','domain']}};

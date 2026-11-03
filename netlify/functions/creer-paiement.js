@@ -120,4 +120,3 @@ exports.handler = async (event) => {
   }
 };
 
-exports.config={path:'/.netlify/functions/creer-paiement',rateLimit:{windowLimit:10,windowSize:60,aggregateBy:['ip','domain']}};

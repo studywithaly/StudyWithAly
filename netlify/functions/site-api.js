@@ -119,4 +119,3 @@ exports.mediaReferences=mediaReferences;
 exports.premium=premium;
 exports.deleteAccount=deleteAccount;
 
-exports.config={path:'/.netlify/functions/site-api',rateLimit:{windowLimit:120,windowSize:60,aggregateBy:['ip','domain']}};
