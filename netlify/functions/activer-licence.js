@@ -1,55 +1,16 @@
-const {gate}=require('../../server/security.cjs');
-// Consomme un code de licence et accorde l'abonnement correspondant.
-// Passe par le serveur pour que le code ne puisse être utilisé qu'une fois.
+const {gate,json:reponse}=require('../../server/security.cjs');
+const {services}=require('./notifications');
 
-// ---------------------------------------------------------------------------
-// Initialisation Firebase Admin. Le SDK Admin ignore les règles Firestore :
-// c'est ce qui rend les droits infalsifiables depuis le navigateur.
-// ---------------------------------------------------------------------------
-const admin = require('../../server/firebase-admin.cjs');
-
-// Identifiants Firebase. Deux façons de les fournir, au choix :
-//   1. FIREBASE_SERVICE_ACCOUNT : le fichier JSON entier, collé tel quel.
-//   2. Les trois variables séparées PROJECT_ID / CLIENT_EMAIL / PRIVATE_KEY.
-function identifiants(){
-  const brut = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if(brut && brut.trim()){
-    const j = JSON.parse(brut);
-    return {
-      projectId:   j.project_id,
-      clientEmail: j.client_email,
-      privateKey:  (j.private_key || "").replace(/\\n/g, "\n")
-    };
-  }
-  return {
-    projectId:   process.env.FIREBASE_PROJECT_ID,
-    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    // la clé peut contenir de vrais retours à la ligne ou la séquence \n
-    privateKey:  (process.env.FIREBASE_PRIVATE_KEY || "")
-                   .replace(/^["']|["']$/g, "")
-                   .replace(/\\n/g, "\n")
-  };
-}
-
-if(!admin.apps.length){
-  admin.initializeApp({ credential: admin.credential.cert(identifiants()) });
-}
-const db = admin.firestore();
-
-const reponse = (code, corps) => ({
-  statusCode: code,
-  headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control":"private, no-store", "X-Content-Type-Options":"nosniff" },
-  body: JSON.stringify(corps)
-});
-
-// Vérifie le jeton envoyé par le navigateur et renvoie l'identité du compte.
 async function utilisateurDepuisEntete(headers){
-  const brut = headers.authorization || headers.Authorization || "";
-  const jeton = brut.startsWith("Bearer ") ? brut.slice(7) : null;
-  if(!jeton) throw new Error("jeton absent");
-  const decode = await admin.auth().verifyIdToken(jeton,true);
-  return { uid: decode.uid, email: decode.email };
+  const brut=headers.authorization||headers.Authorization||'';
+  const jeton=brut.startsWith('Bearer ')?brut.slice(7):null;
+  if(!jeton)throw Error('token-missing');
+  const {admin,db}=services();
+  const decode=await admin.auth().verifyIdToken(jeton,true);
+  if((await db.collection('suppressionComptes').doc(decode.uid).get()).exists)throw Error('account-deleting');
+  return {uid:decode.uid,email:decode.email,db};
 }
+
 exports.handler = async (event) => {
   const rejected=gate(event);if(rejected)return rejected;
   if(event.httpMethod !== "POST") return reponse(405, { erreur:"méthode non autorisée" });
@@ -57,6 +18,7 @@ exports.handler = async (event) => {
   let user;
   try{ user = await utilisateurDepuisEntete(event.headers); }
   catch(e){ return reponse(401, { erreur:"connexion requise" }); }
+  const db=user.db;
 
   let code;
   try{code=String((JSON.parse(event.body||'{}').code)||'').trim().toUpperCase();}catch{return reponse(400,{erreur:'Requête invalide.'});}
