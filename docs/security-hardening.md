@@ -44,5 +44,5 @@ Exécution : `npm test`, `npm audit`, `npm run build`. Règles : `npm exec --yes
 
 ## Compatibilité du serveur
 
-Netlify doit conserver NODE_OPTIONS=--experimental-require-module : le SDK Firebase Admin actuel dépend de modules ESM chargés par CommonJS, fonctionnalité désactivée par défaut dans AWS Lambda. Les dépendances serveur verrouillées sont explicitement incluses dans les fonctions ; leur liste doit être revue lors des mises à jour du verrou npm. Voir la documentation AWS : https://docs.aws.amazon.com/lambda/latest/dg/lambda-nodejs.html .
+La publication compile le code JOSE actuel en CommonJS pour Firebase Admin, sans rétrograder sa version cryptographique. Chaque build vérifie le chargement du serveur avec les restrictions de modules AWS Lambda (--no-experimental-require-module). Aucun mode expérimental du moteur n’est nécessaire. Les dépendances serveur verrouillées sont explicitement incluses dans les fonctions ; leur liste doit être revue lors des mises à jour du verrou npm.
 
