@@ -39,7 +39,7 @@ const db = admin.firestore();
 
 const reponse = (code, corps) => ({
   statusCode: code,
-  headers: { "Content-Type": "application/json" },
+  headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control":"private, no-store", "X-Content-Type-Options":"nosniff" },
   body: JSON.stringify(corps)
 });
 
@@ -72,7 +72,7 @@ exports.handler = async (event) => {
     return reponse(200, { url: session.url });
 
   }catch(e){
-    console.error("portail", e);
+    console.error("portail", e.code||e.name);
     return reponse(500, { erreur: "Service temporairement indisponible." });
   }
 };

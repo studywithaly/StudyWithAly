@@ -38,7 +38,7 @@ const db = admin.firestore();
 
 const reponse = (code, corps) => ({
   statusCode: code,
-  headers: { "Content-Type": "application/json" },
+  headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control":"private, no-store", "X-Content-Type-Options":"nosniff" },
   body: JSON.stringify(corps)
 });
 
