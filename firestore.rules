@@ -8,19 +8,31 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('dev', false) == true;
     }
-
+    function profilValide(uid) {
+      let d=request.resource.data;
+      return d.id == uid && d.nom is string && d.nom.size() > 0 && d.nom.size() <= 120
+        && d.email is string && d.email.size() <= 254 && d.dev is bool
+        && d.get('lu',[]) is list && d.get('revoir',[]) is list && d.get('quiz',[]) is list
+        && d.get('journal',[]) is list && d.get('achats',[]) is list
+        && d.get('lu',[]).size() <= 10000 && d.get('revoir',[]).size() <= 10000
+        && d.get('quiz',[]).size() <= 100 && d.get('journal',[]).size() <= 100
+        && d.get('notes',{}) is map && d.get('atlasProgress',{}) is map
+        && d.get('revisionCartes',{}) is map && d.get('erreursQuiz',{}) is map
+        && d.get('flash',[]) is list && d.get('flash',[]).size() <= 100;
+    }
     match /users/{uid} {
       allow read: if connecte() && (request.auth.uid == uid || estDev());
-      // Le rôle ne peut jamais être attribué par le propriétaire du compte.
-      // Un développeur existant conserve la gestion des autres comptes.
       allow create: if estDev() || (connecte() && request.auth.uid == uid
-        && request.resource.data.dev == false);
+        && profilValide(uid) && request.resource.data.dev == false
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.get('abo',null) == null
+        && request.resource.data.get('achats',[]).size() == 0
+        && request.resource.data.keys().hasOnly(['id','nom','email','dev','cree','abo','achats','lu','quiz','journal','revoir','notes','flash','age','niveau','atlasProgress','revisionCartes','erreursQuiz']));
       allow update: if estDev() || (connecte() && request.auth.uid == uid
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['dev']));
-      // Réserver la suppression évite la recréation d'un compte avec un nouveau rôle.
+        && profilValide(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nom','age','niveau','lu','revoir','quiz','journal','flash','notes','atlasProgress','revisionCartes','erreursQuiz']));
       allow delete: if estDev();
     }
-
     match /contenu/{doc} {
       allow read: if estDev() || (connecte() && doc == 'meta');
       allow write: if estDev();
@@ -29,14 +41,7 @@ service cloud.firestore {
       allow read: if connecte() && (request.auth.uid == uid || estDev());
       allow write: if false;
     }
-    // Le serveur filtre le catalogue et autorise chaque média selon les achats.
-    match /medias/{doc} {
-      allow read: if estDev();
-      allow write: if estDev();
-    }
-    match /ventes/{id} {
-      allow read: if estDev();
-      allow write: if false;
-    }
+    match /medias/{doc} { allow read,write: if estDev(); }
+    match /ventes/{id} { allow read: if estDev(); allow write: if false; }
   }
 }

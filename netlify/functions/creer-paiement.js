@@ -1,69 +1,14 @@
-// Crée une session de paiement Stripe.
-// Le prix n'est jamais lu depuis le navigateur : il est relu dans Firestore,
-// sinon n'importe qui pourrait s'acheter l'abonnement à un centime.
-const stripe = require("stripe")(process.env.STRIPE_CLE_SECRETE);
+const {gate,json:reponse}=require('../../server/security.cjs');
+const {services}=require('./notifications');
 
-// ---------------------------------------------------------------------------
-// Initialisation Firebase Admin. Le SDK Admin ignore les règles Firestore :
-// c'est ce qui rend les droits infalsifiables depuis le navigateur.
-// ---------------------------------------------------------------------------
-const admin = require("firebase-admin");
-
-// Identifiants Firebase. Deux façons de les fournir, au choix :
-//   1. FIREBASE_SERVICE_ACCOUNT : le fichier JSON entier, collé tel quel.
-//   2. Les trois variables séparées PROJECT_ID / CLIENT_EMAIL / PRIVATE_KEY.
-function identifiants(){
-  const brut = (process.env.FIREBASE_SERVICE_ACCOUNT || "").trim();
-
-  if(brut){
-    // Netlify garde parfois les guillemets englobants au collage
-    const nettoye = (brut.startsWith("'") || brut.startsWith('"'))
-      ? brut.slice(1, -1)
-      : brut;
-    const j = JSON.parse(nettoye);
-    let cle = j.private_key || "";
-    if(!cle.includes("\n")) cle = cle.replace(/\\n/g, "\n");
-    return { projectId: j.project_id, clientEmail: j.client_email, privateKey: cle };
-  }
-
-  let cle = (process.env.FIREBASE_PRIVATE_KEY || "").trim();
-  if(cle.startsWith('"') && cle.endsWith('"')) cle = cle.slice(1, -1);
-  cle = cle.replace(/\\n/g, "\n");
-
-  return {
-    projectId:   (process.env.FIREBASE_PROJECT_ID || "").trim(),
-    clientEmail: (process.env.FIREBASE_CLIENT_EMAIL || "").trim(),
-    privateKey:  cle
-  };
-}
-
-if(!admin.apps.length){
-  const ids = identifiants();
-  if(!ids.projectId || !ids.clientEmail || !ids.privateKey){
-    throw new Error("Identifiants Firebase absents : renseigne FIREBASE_SERVICE_ACCOUNT "
-      + "ou les trois variables séparées, scope Functions activé sur Netlify.");
-  }
-  if(!ids.privateKey.startsWith("-----BEGIN PRIVATE KEY-----")){
-    throw new Error("Clé privée mal formée : les délimiteurs BEGIN/END manquent.");
-  }
-  admin.initializeApp({ credential: admin.credential.cert(ids) });
-}
-const db = admin.firestore();
-
-const reponse = (code, corps) => ({
-  statusCode: code,
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify(corps)
-});
-
-// Vérifie le jeton envoyé par le navigateur et renvoie l'identité du compte.
 async function utilisateurDepuisEntete(headers){
-  const brut = headers.authorization || headers.Authorization || "";
-  const jeton = brut.startsWith("Bearer ") ? brut.slice(7) : null;
-  if(!jeton) throw new Error("jeton absent");
-  const decode = await admin.auth().verifyIdToken(jeton,true);
-  if((await db.collection('suppressionComptes').doc(decode.uid).get()).exists)throw Error('compte indisponible');
-  return { uid: decode.uid, email: decode.email };
+  const brut=headers.authorization||headers.Authorization||'';
+  const jeton=brut.startsWith('Bearer ')?brut.slice(7):null;
+  if(!jeton)throw Error('token-missing');
+  const {admin,db}=services();
+  const decode=await admin.auth().verifyIdToken(jeton,true);
+  if((await db.collection('suppressionComptes').doc(decode.uid).get()).exists)throw Error('account-deleting');
+  return {uid:decode.uid,email:decode.email,db};
 }
 
 // TVA : mets la variable STRIPE_TVA à "auto" sur Netlify pour que Stripe
@@ -90,19 +35,23 @@ const PLANS = {
 };
 
 exports.handler = async (event) => {
+  const rejected=gate(event);if(rejected)return rejected;
   if(event.httpMethod !== "POST") return reponse(405, { erreur:"méthode non autorisée" });
 
   let user;
   try{ user = await utilisateurDepuisEntete(event.headers); }
   catch(e){ return reponse(401, { erreur:"connexion requise" }); }
+  const db=user.db;
 
   let type,ref;
   try{({type,ref}=JSON.parse(event.body||'{}'));}catch{return reponse(400,{erreur:'Requête invalide.'});}
-  if(!['abo','livre'].includes(type)||typeof ref!=='string')return reponse(400,{erreur:'Achat invalide.'});
+  if(!['abo','livre'].includes(type)||typeof ref!=='string'||! /^[A-Za-z0-9_-]{1,128}$/.test(ref))return reponse(400,{erreur:'Achat invalide.'});
   const site = process.env.URL || process.env.DEPLOY_PRIME_URL || "";
   const retour = { success_url: site + "/?paiement=ok", cancel_url: site + "/?paiement=annule" };
 
   try{
+    const stripe=require('stripe')(process.env.STRIPE_CLE_SECRETE);
+    if(type==='abo'&&!Object.hasOwn(PLANS,ref))return reponse(400,{erreur:'Formule inconnue.'});
     // On réutilise le client Stripe existant, pour que l'historique reste groupé
     const droits = await db.collection("droits").doc(user.uid).get();
     let client = droits.exists ? droits.data().clientStripe : null;
@@ -115,7 +64,7 @@ exports.handler = async (event) => {
     let session;
 
     if(type === "abo"){
-      const plan = PLANS[ref];
+      const plan = Object.hasOwn(PLANS,ref)?PLANS[ref]:null;
       if(!plan) return reponse(400, { erreur:"formule inconnue" });
       session = await stripe.checkout.sessions.create({
         mode:"subscription",
@@ -166,7 +115,8 @@ exports.handler = async (event) => {
     return reponse(200, { url: session.url });
 
   }catch(e){
-    console.error("creer-paiement", e);
-    return reponse(500, { erreur: e.message });
+    console.error("creer-paiement", e.code||e.name);
+    return reponse(500, { erreur: "Service temporairement indisponible." });
   }
 };
+

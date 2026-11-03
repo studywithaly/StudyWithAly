@@ -1,5 +1,6 @@
+const {gate}=require('../../server/security.cjs');
 const crypto = require('crypto');
-const admin = require('firebase-admin');
+const admin = require('../../server/firebase-admin.cjs');
 function services() {
   if (!admin.apps.length) {
     let raw = (process.env.FIREBASE_SERVICE_ACCOUNT || '').trim();
@@ -24,6 +25,7 @@ function preferences(body) {
 }
 const reply = (statusCode, data) => ({statusCode, headers:{'Content-Type':'application/json','Cache-Control':'no-store'}, body:JSON.stringify(data)});
 exports.handler = async event => {
+  const rejected=gate(event);if(rejected)return rejected;
   if (event.httpMethod !== 'POST') return reply(405,{erreur:'Méthode non autorisée.'});
   const {admin,db} = services();
   let user;
@@ -49,3 +51,4 @@ exports.handler = async event => {
 };
 exports.services = services;
 exports.preferences = preferences;
+

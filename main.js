@@ -1,0 +1,4371 @@
+
+/* =====================================================================
+   SYNAPSE — contenu pédagogique
+   Modifiable intégralement depuis la console développeur.
+   ===================================================================== */
+const CONTENU_INITIAL = {
+  matieres:[
+    {id:"anat", nom:"Anatomie",              c1:"#8B5CF6", c2:"#EC4899", desc:"Systèmes du corps humain, de l'os à la peau."},
+    {id:"cell", nom:"Biologie cellulaire",   c1:"#2563EB", c2:"#38BDF8", desc:"La cellule, ses organites et son cycle."},
+    {id:"mol",  nom:"Biologie moléculaire",  c1:"#EC4899", c2:"#8B5CF6", desc:"ADN, ARN, protéines et techniques du labo."}
+  ],
+
+  fiches:[],
+  questions:[],
+  livres:[]
+};
+
+/* =====================================================================
+   1. CONFIGURATION FIREBASE
+   Colle ici les clés de ton projet (console Firebase > Paramètres > Tes applications).
+   Laisse apiKey vide pour retomber en mode local, dans le navigateur.
+   ===================================================================== */
+const CONFIG_FIREBASE = {
+  apiKey:            "AIzaSyCnX-DWTWSU1d31HpumfE2_bIxbYBe6maA",
+  authDomain:        "alys-be39e.firebaseapp.com",
+  projectId:         "alys-be39e",
+  storageBucket:     "alys-be39e.firebasestorage.app",
+  messagingSenderId: "736316450863",
+  appId:             "1:736316450863:web:47b858ed59dde21cc3feda"
+};
+
+/* Firebase Storage réclame d'activer la facturation. Laissé à false : les
+   schémas sont alors enregistrés dans Firestore, gratuit et sans réglage CORS.
+   Les PDF entiers, eux, se déposent dans un dossier du site (voir plus bas). */
+const UTILISER_STORAGE = false;
+
+/* Paiement : "stripe" utilise les fonctions Netlify, "demo" simule l'achat. */
+const CONFIG_PAIEMENT = { mode:"stripe", base:"/api" };
+
+const MODE_CLOUD = !!(CONFIG_FIREBASE.apiKey && window.firebase);
+let fdb = null, fauth = null;
+if(MODE_CLOUD){
+  firebase.initializeApp(CONFIG_FIREBASE);
+  fdb = firebase.firestore();
+  fauth = firebase.auth();
+}
+
+/* =====================================================================
+   1 bis. STOCKAGE
+   ===================================================================== */
+const CLE = "synapse_db_v1";
+const Memoire = {};
+const Store = {
+  lire(){
+    try{ const v = localStorage.getItem(CLE); return v ? JSON.parse(v) : null; }
+    catch(e){ return Memoire[CLE] ? JSON.parse(Memoire[CLE]) : null; }
+  },
+  ecrire(d){
+    const s = JSON.stringify(d);
+    try{ localStorage.setItem(CLE, s); }catch(e){ Memoire[CLE] = s; }
+  }
+};
+
+let DB = null;
+let U = null;              // utilisateur connecté
+let VUE = "fiches";
+
+const copie = o => JSON.parse(JSON.stringify(o));
+function baseVide(){
+  return {
+    version:1,
+    matieres: copie(CONTENU_INITIAL.matieres),
+    fiches:   copie(CONTENU_INITIAL.fiches),
+    questions:copie(CONTENU_INITIAL.questions),
+    livres:   copie(CONTENU_INITIAL.livres),
+    users:[], licences:[], ventes:[], sessionEmail:null
+  };
+}
+
+async function initDB(){
+  if(!MODE_CLOUD){
+    throw new Error("Connexion sécurisée indisponible. Recharge la page.");
+    DB = Store.lire();
+    if(!DB || !DB.version){
+      DB = baseVide();
+
+      Store.ecrire(DB);
+    }
+    return;
+  }
+  DB = baseVide();   // aucune lecture distante tant que personne n'est connecté
+}
+
+/* Contenu partagé : lu une fois l'utilisateur authentifié */
+async function chargerContenu(){
+  if(!MODE_CLOUD) return;
+  try{
+    const response=await appelServeur('site-api',{action:'content'});
+    Object.assign(DB,SWA_SECURITY.content(response.contenu));
+    DROITS=Object.assign({abo:null,achats:[]},response.droits);
+  }catch(e){DB.fiches=[];DB.questions=[];DB.livres=[];toast("Chargement impossible : "+e.message,"ko");}
+  if(!U || !U.dev)return;
+  try{
+    const lic = await fdb.collection("contenu").doc("licences").get();
+    DB.licences = lic.exists ? (lic.data().liste || []) : [];
+    const ven = await fdb.collection("contenu").doc("ventes").get();
+    DB.ventes = ven.exists ? (ven.data().liste || []) : [];
+  }catch(e){}
+}
+
+/* Sauvegarde du compte courant */
+function sauver(){
+  if(!MODE_CLOUD){ Store.ecrire(DB); return; }
+  if(!U) return;
+  fdb.collection("users").doc(fauth.currentUser.uid).update(copie(SWA_SECURITY.profilePatch(U)))
+     .catch(e => toast("Enregistrement impossible : " + e.message, "ko"));
+}
+/* Sauvegarde d'un autre compte (actions développeur) */
+function sauverUser(u){
+  if(!MODE_CLOUD){ Store.ecrire(DB); return; }
+  fdb.collection("users").doc(u.id).set(copie(u))
+     .catch(e => toast("Enregistrement impossible : " + e.message, "ko"));
+}
+/* Sauvegarde du contenu partagé : fiches, questions, livres, matières */
+async function sauverContenu(){
+  if(!MODE_CLOUD){ Store.ecrire(DB); return; }
+  const paquet = { matieres:DB.matieres, fiches:DB.fiches, questions:DB.questions, livres:DB.livres };
+  const taille = JSON.stringify(paquet).length;
+  if(taille > 950000)
+    throw new Error("le contenu dépasse la taille maximale d'un document (" +
+      Math.round(taille/1024) + " Ko sur 1024). Allège des fiches ou réimporte en plusieurs fois.");
+  await fdb.collection("contenu").doc("base").set(paquet);
+  await fdb.collection("contenu").doc("meta").set({ initialise:true }, { merge:true });
+}
+/* Sauvegarde des licences et des ventes */
+function sauverListes(){
+  if(!MODE_CLOUD){ Store.ecrire(DB); return; }
+  fdb.collection("contenu").doc("licences").set({ liste:DB.licences }).catch(()=>{});
+  fdb.collection("contenu").doc("ventes").set({ liste:DB.ventes.slice(0,500) }).catch(()=>{});
+}
+/* Chargement de tous les comptes, pour la console développeur */
+async function chargerUtilisateurs(){
+  if(!MODE_CLOUD) return;
+  try{
+    const s = await fdb.collection("users").get();
+    DB.users = s.docs.map(d => SWA_SECURITY.profile(d.data(),d.id));
+    try{                                        // droits accordés par le serveur
+      const dr = await fdb.collection("droits").get();
+      const par = {};
+      dr.docs.forEach(d => { par[d.id] = d.data(); });
+      DB.users.forEach(u => {
+        const d = par[u.id];
+        if(d){ u.abo = d.abo || null; u.achats = d.achats || []; }
+      });
+    }catch(e){}
+  }catch(e){ toast("Liste des comptes inaccessible : " + e.message, "ko"); }
+}
+
+/* Téléversement d'un PDF ou d'une image vers Firebase Storage */
+async function televerser(input, champCible, dossier){
+  const f = input.files[0];
+  if(!f) return;
+  if(!UTILISER_STORAGE || !MODE_CLOUD || !window.firebase || !firebase.storage)
+    return toast("Dépose le PDF dans le dossier « pdf » du site, puis écris ici pdf/nom-du-fichier.pdf","ko");
+  if(f.size > 25 * 1024 * 1024) return toast("Fichier trop lourd, 25 Mo maximum.","ko");
+  const btn = input.parentElement.querySelector(".etat-envoi");
+  if(btn) btn.textContent = "Envoi en cours…";
+  try{
+    const nom = Date.now() + "-" + f.name.replace(/[^\w.\-]/g, "_");
+    const ref = firebase.storage().ref((dossier||"fiches") + "/" + nom);
+    await ref.put(f);
+    const url = await ref.getDownloadURL();
+    const cible = document.getElementById(champCible);
+    if(cible.tagName === "TEXTAREA") cible.value = (cible.value.trim() ? cible.value.trim() + "\n" : "") + url;
+    else cible.value = url;
+    if(btn) btn.textContent = f.name;
+    toast("Fichier en ligne.","ok");
+  }catch(e){
+    if(btn) btn.textContent = "Échec";
+    toast("Téléversement refusé : " + e.message,"ko");
+  }
+}
+
+function zoomer(url, titre = "Schéma agrandi"){
+  if(document.querySelector(".zoom-lecteur")) return;
+  const precedent = document.activeElement;
+  const defilement = document.body.style.overflow;
+  const v = document.createElement("dialog");
+  v.className = "zoom-lecteur";
+  v.setAttribute("aria-label", titre);
+  v.innerHTML = `<div class="zoom-outils">
+    <h2 class="zoom-titre"></h2>
+    <button type="button" class="btn mini" data-action="moins" aria-label="Réduire le zoom">−</button>
+    <output class="zoom-niveau" aria-live="polite" aria-label="Niveau de zoom">100 %</output>
+    <button type="button" class="btn mini" data-action="plus" aria-label="Augmenter le zoom">+</button>
+    <button type="button" class="btn mini" data-action="ajuster">Ajuster</button>
+    <button type="button" class="btn mini" data-action="plein">Plein écran</button>
+    <button type="button" class="btn mini" data-action="fermer" autofocus>Fermer</button>
+  </div>
+  <div class="zoom-page" tabindex="0" role="region" aria-label="Fiche agrandie, défilement horizontal et vertical"><img></div>
+  <p class="zoom-aide">Utilise + et − pour zoomer, les flèches pour défiler et Échap pour fermer.</p>`;
+  const page = v.querySelector(".zoom-page"), img = v.querySelector("img");
+  const bouton = action => v.querySelector(`[data-action="${action}"]`);
+  let niveau = 100;
+  img.src = url;
+  img.alt = titre;
+  v.querySelector(".zoom-titre").textContent = titre;
+  function afficher(){
+    const style = getComputedStyle(page);
+    const largeur = page.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    img.style.width = Math.max(1, largeur) * niveau / 100 + "px";
+    v.querySelector("output").textContent = niveau + " %";
+    bouton("moins").disabled = niveau <= 50;
+    bouton("plus").disabled = niveau >= 300;
+  }
+  function changer(delta){ niveau = Math.min(300, Math.max(50, niveau + delta)); afficher(); }
+  bouton("moins").onclick = () => changer(-25);
+  bouton("plus").onclick = () => changer(25);
+  bouton("ajuster").onclick = () => { niveau = 100; afficher(); page.scrollTo(0,0); };
+  bouton("fermer").onclick = () => v.close();
+  bouton("plein").hidden = !document.fullscreenEnabled;
+  bouton("plein").onclick = async () => {
+    try{
+      if(document.fullscreenElement === v) await document.exitFullscreen();
+      else await v.requestFullscreen();
+    }catch(e){ v.querySelector(".zoom-aide").textContent = "Le plein écran est indisponible. Tu peux continuer à utiliser le zoom."; }
+  };
+  v.addEventListener("fullscreenchange", () => {
+    bouton("plein").textContent = document.fullscreenElement === v ? "Quitter le plein écran" : "Plein écran";
+  });
+  v.addEventListener("keydown", e => {
+    if(e.key === "+" || e.key === "="){ e.preventDefault(); changer(25); }
+    if(e.key === "-"){ e.preventDefault(); changer(-25); }
+    if(e.key === "Escape") e.stopPropagation();
+  });
+  const observer = new ResizeObserver(afficher);
+  v.addEventListener("close", () => {
+    observer.disconnect();
+    document.body.style.overflow = defilement;
+    v.remove();
+    if(precedent && precedent.isConnected) precedent.focus();
+  }, {once:true});
+  document.body.appendChild(v);
+  document.body.style.overflow = "hidden";
+  v.showModal();
+  observer.observe(page);
+  afficher();
+}
+
+/* Réinitialisation du mot de passe */
+function modaleMdpOublie(){
+  const saisi = (($("#c-email") || {}).value || "").trim();
+  modale(`
+    <p class="eyebrow">Mot de passe</p>
+    <h2 style="margin:8px 0 10px">Mot de passe oublié</h2>
+    <p class="small muted" style="margin-bottom:18px">Indique l'adresse de ton compte : tu recevras un lien pour choisir un nouveau mot de passe.</p>
+    <form onsubmit="envoyerReinitialisation(event)">
+      <div class="champ"><label for="oubli-email">Adresse e-mail</label>
+        <input id="oubli-email" type="email" autocomplete="email" required value="${esc(saisi)}" placeholder="prenom@exemple.fr"></div>
+      <button class="btn primaire large" type="submit">Envoyer le lien</button>
+      <button class="btn fantome" type="button" style="width:100%;margin-top:8px" onclick="fermerModale()">Annuler</button>
+      <p class="tiny muted" style="margin-top:14px;text-align:center;line-height:1.5">Le message arrive en général en moins d'une minute. Pense à regarder dans les indésirables.</p>
+    </form>`);
+}
+
+async function envoyerReinitialisation(e){
+  e.preventDefault();
+  const email = $("#oubli-email").value.toLowerCase().trim();
+  if(!MODE_CLOUD){
+    fermerModale();
+    return toast("La réinitialisation par e-mail n'existe que sur la version en ligne.","ko");
+  }
+  try{
+    await fauth.sendPasswordResetEmail(email, { url: location.origin + "/" });
+    fermerModale();
+    // on ne révèle jamais si l'adresse existe : ce serait dire qui a un compte
+    toast("Si un compte utilise cette adresse, le lien vient d'y être envoyé.","ok");
+  }catch(err){
+    if(err.code === "auth/user-not-found"){
+      fermerModale();
+      return toast("Si un compte utilise cette adresse, le lien vient d'y être envoyé.","ok");
+    }
+    toast(traduireErreur(err),"ko");
+  }
+}
+
+/* E-mail de confirmation d'adresse, envoyé par Firebase */
+async function envoyerConfirmation(){
+  if(!MODE_CLOUD){ return toast("L'envoi d'e-mail n'existe que sur la version en ligne.","ko"); }
+  if(!fauth.currentUser){ return toast("Reconnecte-toi avant de demander un envoi.","ko"); }
+  if(fauth.currentUser.emailVerified) return toast("Ton adresse est déjà confirmée.");
+
+  const reussi = () => toast("E-mail de confirmation envoyé à " + fauth.currentUser.email + ". Regarde aussi tes indésirables.","ok");
+
+  try{
+    await fauth.currentUser.sendEmailVerification({ url: location.origin + "/", handleCodeInApp:false });
+    return reussi();
+  }catch(e){
+    // le lien de retour doit figurer dans les domaines autorisés de Firebase :
+    // si ce n'est pas le cas, on renvoie le mail sans lien de retour personnalisé
+    if(["auth/unauthorized-continue-uri","auth/invalid-continue-uri","auth/missing-continue-uri"].includes(e.code)){
+      try{
+        await fauth.currentUser.sendEmailVerification();
+        console.warn("Ajoute " + location.hostname + " dans Firebase > Authentication > Paramètres > Domaines autorisés.");
+        return reussi();
+      }catch(e2){ e = e2; }
+    }
+    console.error("confirmation e-mail", e.code, e.message);
+    toast(e.code === "auth/too-many-requests"
+      ? "Un e-mail vient déjà d'être envoyé, patiente quelques minutes."
+      : "Envoi impossible (" + (e.code || "erreur") + "). Détail dans la console F12.", "ko");
+  }
+}
+
+function adresseConfirmee(){
+  return !MODE_CLOUD || !fauth.currentUser || fauth.currentUser.emailVerified;
+}
+
+async function verifierConfirmation(){
+  if(!MODE_CLOUD || !fauth.currentUser) return;
+  try{
+    await fauth.currentUser.reload();
+    if(fauth.currentUser.emailVerified){ toast("Adresse confirmée, merci.","ok"); App.aller(VUE); }
+    else toast("Pas encore confirmée. Ouvre le lien reçu par e-mail, puis reviens ici.");
+  }catch(e){ toast("Vérification impossible : " + e.message, "ko"); }
+}
+
+function traduireErreur(err){
+  const m = {
+    "auth/email-already-in-use":"Cette adresse a déjà un compte.",
+    "auth/invalid-email":"Adresse e-mail invalide.",
+    "auth/weak-password":"Mot de passe trop court, 6 caractères minimum.",
+    "auth/wrong-password":"Mot de passe incorrect.",
+    "auth/user-not-found":"Aucun compte avec cette adresse.",
+    "auth/invalid-credential":"E-mail ou mot de passe incorrect.",
+    "auth/too-many-requests":"Trop de tentatives, réessaie dans quelques minutes.",
+    "auth/network-request-failed":"Connexion au serveur impossible.",
+    "auth/missing-email":"Indique une adresse e-mail.",
+    "auth/operation-not-allowed":"Active la connexion E-mail/Mot de passe dans Firebase > Authentication.",
+    "auth/unauthorized-domain":"Ajoute ce domaine dans Firebase > Authentication > Paramètres > Domaines autorisés.",
+    "permission-denied":"Règles Firestore trop restrictives : vérifie qu'elles sont bien publiées."
+  };
+  return m[err.code] || err.message;
+}
+
+/* =====================================================================
+   2. OUTILS
+   ===================================================================== */
+const $  = s => document.querySelector(s);
+const uid = p => p + "-" + Math.random().toString(36).slice(2,9);
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const jsArg = value => esc(JSON.stringify(String(value??'')));
+const hachage = s => { let h = 5381; for(let i=0;i<s.length;i++) h = ((h<<5)+h+s.charCodeAt(i))|0; return "h"+(h>>>0).toString(36)+s.length; };
+const jour = d => new Date(d).toLocaleDateString("fr-FR",{day:"2-digit",month:"short",year:"numeric"});
+const nomMat = id => (DB.matieres.find(m=>m.id===id)||{nom:"Toutes matières"}).nom;
+const mat = id => DB.matieres.find(m=>m.id===id) || {nom:"—",c1:"#8B5CF6",c2:"#EC4899"};
+
+const norm = t => (t||"").toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+const sansBalises = t => (t||"").replace(/<[^>]+>/g," ");
+
+function texteFiche(f){
+  return norm(sansBalises([
+    f.t, f.ch, f.note || "",
+    ...(f.s || []).map(x => x.h + " " + x.l.join(" "))
+  ].join(" ")));
+}
+function surligner(texte, q){
+  if(!q) return esc(texte);
+  const i = norm(texte).indexOf(q);
+  if(i < 0) return esc(texte);
+  return esc(texte.slice(0, i)) + "<mark>" + esc(texte.slice(i, i + q.length)) + "</mark>" + esc(texte.slice(i + q.length));
+}
+function champRecherche(id, placeholder, action){
+  return `<div class="barre-recherche">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+    <input id="${id}" type="search" placeholder="${esc(placeholder)}" oninput="${action}(this.value)" autocomplete="off">
+    <button class="effacer" type="button" title="Effacer" onclick="document.getElementById(${jsArg(id)}).value='';${action}('')">✕</button>
+  </div>`;
+}
+
+function toast(msg,type){
+  const t = document.createElement("div");
+  t.className = "toast " + (type||"");
+  t.textContent = msg;
+  $("#toasts").appendChild(t);
+  setTimeout(()=>{ t.style.opacity="0"; t.style.transform="translateX(30px)"; t.style.transition=".3s"; setTimeout(()=>t.remove(),300); }, 3200);
+}
+function modale(html, large){
+  const v = document.createElement("div");
+  v.className = "voile";
+  v.innerHTML = `<div class="modale${large?" large":""}">${html}</div>`;
+  v.addEventListener("click", e => { if(e.target === v) fermerModale(); });
+  $("#modales").appendChild(v);
+  const f = v.querySelector("input,select,textarea,button");
+  if(f) setTimeout(()=>f.focus(),60);
+}
+function fermerModale(){ const m = $("#modales").lastElementChild; if(m) m.remove(); }
+document.addEventListener("keydown", e => { if(e.key === "Escape") fermerModale(); });
+
+function nouvelUtilisateur(nom,email,mdp,dev){
+  return { id:uid("u"), nom, email:email.toLowerCase().trim(), mdp:hachage(mdp), dev:!!dev,
+           cree:Date.now(), abo:null, achats:[], lu:[], quiz:[], journal:[] };
+}
+function tracer(action){
+  if(!U) return;
+  U.journal = U.journal || [];
+  U.journal.unshift({ a:action, d:Date.now() });
+  U.journal = U.journal.slice(0,60);
+}
+
+/* ---- droits accordés par le serveur ---- */
+let DROITS = { abo:null, achats:[] };
+
+async function chargerDroits(){
+  if(!MODE_CLOUD || !U){ DROITS = { abo:null, achats:[] }; return; }
+  try{
+    const d = await fdb.collection("droits").doc(U.id).get();
+    DROITS = d.exists ? Object.assign({ abo:null, achats:[] }, d.data()) : { abo:null, achats:[] };
+  }catch(e){ DROITS = { abo:null, achats:[] }; }
+}
+
+/* Jeton d'identité transmis aux fonctions serveur */
+async function jeton(){
+  if(!MODE_CLOUD || !fauth.currentUser) throw new Error("connexion requise");
+  return await fauth.currentUser.getIdToken();
+}
+async function appelServeur(chemin, corps){
+  const r = await fetch(CONFIG_PAIEMENT.base + "/" + chemin, {
+    method:"POST",
+    headers:{ "Content-Type":"application/json", Authorization:"Bearer " + (await jeton()) },
+    body: JSON.stringify(corps || {})
+  });
+  const d = await r.json().catch(() => ({}));
+  if(!r.ok) throw new Error(d.erreur || "le serveur a refusé la demande");
+  return d;
+}
+
+/* ---- abonnement & accès ---- */
+function monAbo(){ return MODE_CLOUD ? DROITS.abo : (U && U.abo); }
+
+function aboActif(u){
+  // un autre compte (console développeur) : ses droits sont chargés à part
+  if(u && U && u.id !== U.id) return !!(u.abo && u.abo.fin > Date.now());
+  const a = monAbo();
+  return !!(a && a.fin > Date.now() && a.statut !== "suspendu");
+}
+function joursRestants(u){
+  if(u && U && u.id !== U.id) return aboActif(u) ? Math.ceil((u.abo.fin - Date.now())/86400000) : 0;
+  const a = monAbo();
+  return aboActif() ? Math.ceil((a.fin - Date.now())/86400000) : 0;
+}
+function libellePlan(u){
+  u = u || U;
+  if(u && u.dev) return "Compte développeur";
+  if(aboActif(u)){
+    const a = (u && U && u.id !== U.id) ? u.abo : monAbo();
+    return (a.plan === "annuel" ? "Abonnement annuel" : "Abonnement mensuel") + " · " + joursRestants(u) + " j";
+  }
+  return "Compte gratuit";
+}
+function accesPremium(){ return !!(U && (U.dev || aboActif(U))); }
+function possede(livreId){
+  if(!U) return false;
+  if(U.dev) return true;
+  if(MODE_CLOUD) return (DROITS.achats || []).includes(livreId);
+  return U.achats.includes(livreId);
+}
+
+/* ---- progression ---- */
+function progressionMatiere(mid){
+  const fiches = DB.fiches.filter(f => f.m === mid);
+  const lues   = fiches.filter(f => U.lu.includes(f.id)).length;
+  const partF  = fiches.length ? lues / fiches.length : 0;
+  const tests  = (U.quiz||[]).filter(q => q.m === mid).slice(0,5);
+  const partQ  = tests.length ? tests.reduce((s,q)=>s + q.justes/q.total, 0) / tests.length : 0;
+  const pct    = Math.round((partF * 0.4 + partQ * 0.6) * 100);
+  return { pct, lues, total:fiches.length, tests:tests.length, moyenne: tests.length ? Math.round(partQ*100) : null };
+}
+function progressionGlobale(){
+  const v = DB.matieres.map(m => progressionMatiere(m.id).pct);
+  return v.length ? Math.round(v.reduce((a,b)=>a+b,0)/v.length) : 0;
+}
+function anneau(pct, c1, c2, taille){
+  const t = taille || 104, r = (t/2) - 7, c = 2 * Math.PI * r, g = uid("g");
+  return `<div class="anneau" style="width:${t}px;height:${t}px">
+    <svg width="${t}" height="${t}">
+      <defs><linearGradient id="${g}" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${c1}"/><stop offset="100%" stop-color="${c2}"/></linearGradient></defs>
+      <circle cx="${t/2}" cy="${t/2}" r="${r}" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="8"/>
+      <circle cx="${t/2}" cy="${t/2}" r="${r}" fill="none" stroke="url(#${g})" stroke-width="8" stroke-linecap="round"
+              stroke-dasharray="${c}" stroke-dashoffset="${c*(1-pct/100)}" style="transition:stroke-dashoffset .9s cubic-bezier(.2,.8,.2,1)"/>
+    </svg><div class="val">${pct}<span style="font-size:12px">%</span></div></div>`;
+}
+
+/* =====================================================================
+   3. AUTHENTIFICATION
+   ===================================================================== */
+const Auth = {
+  onglet(n){
+    const co = n === "connexion";
+    $("#ong-connexion").classList.toggle("actif", co);
+    $("#ong-inscription").classList.toggle("actif", !co);
+    $("#form-connexion").classList.toggle("hidden", !co);
+    $("#form-inscription").classList.toggle("hidden", co);
+  },
+
+  async connecter(e){
+    e.preventDefault();
+    const email = $("#c-email").value.toLowerCase().trim(), mdp = $("#c-mdp").value;
+    if(!MODE_CLOUD){
+      const u = DB.users.find(x => x.email === email);
+      if(!u || u.mdp !== hachage(mdp)) return toast("E-mail ou mot de passe incorrect.","ko");
+      DB.sessionEmail = u.email; Store.ecrire(DB); return ouvrirSession(u);
+    }
+    try{
+      const c = await fauth.signInWithEmailAndPassword(email, mdp);
+      const d = await fdb.collection("users").doc(c.user.uid).get();
+      if(!d.exists) return toast("Compte introuvable dans la base.","ko");
+      ouvrirSession(SWA_SECURITY.profile(d.data(),d.id));
+    }catch(err){ toast(traduireErreur(err),"ko"); }
+  },
+
+  async inscrire(e){
+    e.preventDefault();
+    const nom = $("#i-nom").value.trim(), email = $("#i-email").value.toLowerCase().trim(), mdp = $("#i-mdp").value;
+    if(!MODE_CLOUD){
+      if(DB.users.some(x => x.email === email)) return toast("Cette adresse a déjà un compte.","ko");
+      const u = nouvelUtilisateur(nom, email, mdp, false);
+      DB.users.push(u); DB.sessionEmail = u.email; Store.ecrire(DB);
+      ouvrirSession(u); return toast("Compte créé. Bienvenue " + nom + ".","ok");
+    }
+    let c;
+    try{
+      c = await fauth.createUserWithEmailAndPassword(email, mdp);
+    }catch(err){ return toast(traduireErreur(err),"ko"); }
+    // À partir d'ici l'utilisateur est authentifié : Firestore devient accessible.
+    const u = nouvelUtilisateur(nom, email, mdp, false);
+    u.id = c.user.uid;
+    delete u.mdp;                       // les mots de passe restent chez Firebase Auth
+    try{
+      await fdb.collection("users").doc(u.id).set(u);
+    }catch(err){ return toast("Compte créé mais base inaccessible : " + err.message,"ko"); }
+
+    envoyerConfirmation();             // e-mail de confirmation d'adresse
+    ouvrirSession(u);
+    toast("Compte créé. Bienvenue " + nom + ".","ok");
+  },
+
+  async deconnecter(){
+    if(MODE_CLOUD){ try{ await fauth.signOut(); }catch(e){} }
+    else { DB.sessionEmail = null; Store.ecrire(DB); }
+    U = null;
+    $("#vue-app").classList.add("hidden"); $("#vue-auth").classList.remove("hidden");
+    $("#c-mdp").value = "";
+  }
+};
+
+async function ouvrirSession(u){
+  U = MODE_CLOUD && fauth.currentUser?SWA_SECURITY.profile(u,fauth.currentUser.uid):u;
+  u=U;
+  tracer("Connexion"); sauver();
+  $("#vue-auth").classList.add("hidden");
+  $("#vue-app").classList.remove("hidden");
+  $("#mini-avatar").textContent = (u.nom[0]||"?").toUpperCase();
+  $("#mini-nom").textContent = u.nom;
+  $("#mini-plan").textContent = libellePlan(u);
+  $("#nav-dev").style.display = u.dev ? "" : "none";
+  $("#titre-dev").style.display = u.dev ? "" : "none";
+  App.aller("aujourdhui");
+  if(MODE_CLOUD && !adresseConfirmee())
+    setTimeout(() => toast("Pense à confirmer ton adresse e-mail : le lien est dans ta boîte de réception."), 2000);
+
+  if(MODE_CLOUD){
+    await chargerDroits();
+    await chargerContenu();
+    if(u.dev) await chargerUtilisateurs();
+    $("#mini-plan").textContent = libellePlan(U);
+    App.aller(VUE);
+  }
+}
+
+/* =====================================================================
+   4. ROUTEUR
+   ===================================================================== */
+const App = {
+  aller(v){
+    VUE = v;
+    document.querySelectorAll(".nav-lien").forEach(b => b.classList.toggle("actif", b.dataset.vue === v));
+    const plus=document.querySelector('.nav-plus');
+    if(plus)plus.classList.toggle('actif',['atlas','boutique','bibliotheque','profil','dev'].includes(v));
+    $("#mini-plan").textContent = libellePlan(U);
+    const rendus = { atlas:window.vueAtlas||vueFiches, aujourdhui:window.vueAujourdhui||vueFiches, fiches:vueFiches, quiz:vueQuiz, flashcards:vueFlashcards, progression:vueProgression, boutique:vueBoutique, bibliotheque:vueBibliotheque, profil:vueProfil, dev:vueDev };
+    $("#zone").innerHTML = (rendus[v] || vueFiches)();
+    window.scrollTo({top:0});
+  },
+  rafraichir(){ App.aller(VUE); }
+};
+
+function ouvrirMenuMobile(){
+  const liens=[['atlas','Anatomie · Atlas 3D'],['progression','Ma progression'],['boutique','Boutique'],['bibliotheque','Bibliothèque'],['profil','Mon profil']];
+  if(U && U.dev)liens.push(['dev','Console développeur']);
+  modale(`<h2 style="margin-bottom:16px">Menu</h2><div style="display:grid;gap:8px">
+    ${liens.map(([vue,nom])=>`<button class="btn large" onclick="fermerModale();App.aller(${jsArg(vue)})">${nom}</button>`).join('')}
+    <button class="btn fantome large" onclick="fermerModale();Auth.deconnecter()">Se déconnecter</button>
+    <button class="btn large" onclick="fermerModale()">Fermer le menu</button></div>`);
+  const panneau=document.querySelector('#modales .modale');if(panneau){panneau.setAttribute('role','dialog');panneau.setAttribute('aria-label','Menu de navigation');}
+}
+
+/* =====================================================================
+   5. FICHES
+   ===================================================================== */
+let matiereActive = "anat";
+let recherche = "";
+
+function vueFiches(){
+  if(!DB.matieres.some(m => m.id === matiereActive)){
+    matiereActive = (DB.matieres.find(m => DB.fiches.some(f => f.m === m.id)) || DB.matieres[0] || {}).id || "";
+  }
+  const fiches = DB.fiches.filter(f => f.m === matiereActive);
+  const p = progressionMatiere(matiereActive);
+  const m = mat(matiereActive);
+  const chapitres = [...new Set(fiches.map(f => f.ch))];
+
+  return `
+  <header class="tete">
+    <p class="eyebrow">Fiches de révision</p>
+    <h1>Le cours, découpé en fiches</h1>
+    <p class="muted" style="max-width:620px">Coche une fiche comme lue pour la faire compter dans ta progression.</p>
+  </header>
+
+  ${champRecherche("q-fiches", "Rechercher une fiche, un chapitre, un mot du cours…", "filtrerFiches")}
+
+  <div class="matiere-onglets">
+    ${DB.matieres.map(x => `<button class="chip ${x.id===matiereActive?"actif":""}" onclick="choisirMatiere(${jsArg(x.id)})">${esc(x.nom)}</button>`).join("")}
+  </div>
+
+  <div class="carte lueur entre" style="margin-bottom:24px">
+    <div>
+      <h2 style="margin-bottom:4px">${esc(m.nom)}</h2>
+      <p class="small muted">${esc(m.desc||"")} · ${p.lues}/${p.total} fiches lues</p>
+      <p class="tiny muted">Lecture : ${p.total?Math.round(p.lues/p.total*100):0} % · Quiz : ${p.moyenne===null?'pas encore évalué':p.moyenne+' %'}</p>
+    </div>
+    ${anneau(p.total?Math.round(p.lues/p.total*100):0, m.c1, m.c2, 88)}
+  </div>
+
+  <div id="liste-fiches">${htmlListeFiches()}</div>`;
+}
+
+function carteFiche(f, q, avecMatiere){
+  const lue = U.lu.includes(f.id);
+  const revoir = (U.revoir || []).includes(f.id);
+  const bloque = f.prem && !accesPremium();
+  const sections = f.s || [], images = f.img || [];
+  const texte = sections.flatMap(s => s.l || []).join(" ").replace(/<[^>]*>/g, "").trim();
+  const minutes = texte ? Math.max(1, Math.ceil(texte.split(/\s+/).length / 180)) : 0;
+  return `<article class="carte fiche-carte ${lue?"lue":""}" role="button" onclick="ouvrirFiche(${jsArg(f.id)})" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();ouvrirFiche(${jsArg(f.id)})}">
+    ${!bloque && images.length ? `<img class="fiche-apercu" src="${sourceImage(images[0])}" data-med="${esc(images[0])}" alt="" loading="lazy" onload="this.onload=null;if(this.dataset.med.startsWith('med:'))resoudreImages([this.dataset.med])" onerror="this.hidden=true">` : ""}
+    ${bloque ? `<span class="cadenas"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#FBBF24" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg></span>` : ""}
+    <div class="rang" style="gap:8px">
+      ${avecMatiere ? `<span class="pastille">${esc(nomMat(f.m))}</span>` : ""}
+      <span class="pastille ${revoir?"or":lue?"vert":""}">${revoir?"À revoir":lue?"Lue":"À lire"}</span>
+      ${f.prem ? `<span class="pastille ${bloque?"or":"vert"}">${bloque?"Premium":"Accès inclus"}</span>` : `<span class="pastille bleu">Accès libre</span>`}
+      ${f.pdf ? `<span class="pastille rose">PDF</span>` : ""}
+    </div>
+    <h3>${surligner(f.t, q)}</h3>
+    ${!bloque && sections.length ? `<p class="fiche-resume">${esc(sections.map(s=>s.h).filter(Boolean).join(" · "))}</p>` : ""}
+    <p class="small muted">${avecMatiere ? esc(f.ch) + " · " : ""}${f.pdf && !sections.length ? "Document PDF" : sections.length ? sections.reduce((s,x)=>s+(x.l||[]).length,0) + " points clés" : images.length ? images.length + " page" + (images.length>1?"s":"") + " à consulter" : "Fiche de révision"}${minutes ? " · Lecture estimée : " + minutes + " min (texte)" : ""}</p>
+  </article>`;
+}
+
+function htmlListeFiches(){
+  const q = norm(recherche.trim());
+
+  if(q){
+    const trouvees = DB.fiches.filter(f => texteFiche(f).includes(q));
+    if(!trouvees.length) return `<div class="vide"><h3>Aucun résultat</h3>
+      <p class="small">Rien ne correspond à « ${esc(recherche)} », toutes matières confondues.</p></div>`;
+    return `<p class="eyebrow" style="margin-bottom:12px">${trouvees.length} résultat${trouvees.length>1?"s":""} · toutes matières</p>
+      <div class="grille g2">${trouvees.map(f => carteFiche(f, q, true)).join("")}</div>`;
+  }
+
+  const fiches = DB.fiches.filter(f => f.m === matiereActive);
+  if(!fiches.length) return `<div class="vide"><h3>Aucune fiche pour cette matière</h3>
+    <p class="small">Ajoute-en depuis la console développeur.</p></div>`;
+  const chapitres = [...new Set(fiches.map(f => f.ch))];
+  return chapitres.map(ch => `<section style="margin-bottom:30px">
+      <p class="eyebrow" style="margin-bottom:12px">${esc(ch)}</p>
+      <div class="grille g2">${fiches.filter(f => f.ch === ch).map(f => carteFiche(f, "", false)).join("")}</div>
+    </section>`).join("");
+}
+
+function filtrerFiches(q){
+  recherche = q;
+  const c = document.getElementById("liste-fiches");
+  if(c) c.innerHTML = htmlListeFiches();
+}
+
+function choisirMatiere(id){ matiereActive = id; recherche = ""; App.aller("fiches"); }
+
+function ouvrirFiche(id){
+  const f = DB.fiches.find(x => x.id === id);
+  if(!f) return;
+  if(f.prem && !accesPremium()) return murPayant("Cette fiche fait partie du contenu premium.");
+  const m = mat(f.m), lue = U.lu.includes(f.id);
+  $("#zone").innerHTML = `
+    <button class="btn fantome mini" onclick="App.aller('fiches')" style="margin-bottom:20px">← Retour aux fiches</button>
+    <article class="lecteur">
+      <p class="eyebrow" style="margin-bottom:10px">${esc(m.nom)} · ${esc(f.ch)}</p>
+      <h1 style="margin-bottom:22px">${esc(f.t)}</h1>
+
+      ${f.pdf ? `<div class="carte visionneuse">
+        <div class="barre-outils">
+          <span class="pastille rose">Document PDF</span>
+          <div class="rang" style="gap:8px">
+            <a class="btn mini" href="${esc(SWA_SECURITY.url(f.pdf))}" target="_blank" rel="noopener">Ouvrir en plein écran</a>
+            <a class="btn mini" href="${esc(SWA_SECURITY.url(f.pdf))}" download>Télécharger</a>
+          </div>
+        </div>
+        <iframe src="${esc(SWA_SECURITY.url(f.pdf))}#view=FitH" title="${esc(f.t)}" loading="lazy"></iframe>
+        <p class="tiny muted" style="padding:10px 16px">Si le document ne s'affiche pas, utilise « Ouvrir en plein écran ».</p>
+      </div>` : ""}
+
+      ${f.s.map(sec => `<section class="bloc-fiche"><h3>${esc(sec.h)}</h3><ul>${sec.l.map(li => `<li>${SWA_SECURITY.rich(li)}</li>`).join("")}</ul></section>`).join("")}
+
+      ${(f.img||[]).length ? `<section style="margin-top:26px">
+        <p class="eyebrow" style="margin-bottom:12px">Schémas</p>
+        <div class="schemas">${f.img.map((u,i) => `<figure>
+          <img src="${sourceImage(u)}" data-med="${esc(u)}" alt="Schéma ${i+1} — ${esc(f.t)}" role="button" tabindex="0" aria-haspopup="dialog" onclick="zoomer(this.src,this.alt)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();zoomer(this.src,this.alt)}" loading="lazy">
+          <figcaption><span>Schéma ${i+1}</span><button type="button" class="schema-agrandir" aria-haspopup="dialog" onclick="const image=this.closest('figure').querySelector('img');zoomer(image.src,image.alt)">Agrandir / Zoom</button></figcaption></figure>`).join("")}</div>
+      </section>` : ""}
+      ${f.note ? `<div class="encadre"><b>À retenir —</b> ${SWA_SECURITY.rich(f.note)}</div>` : ""}
+      <div class="rang" style="margin-top:32px;gap:10px">
+        <button class="btn ${lue?"":"primaire"}" onclick="marquerLue(${jsArg(f.id)})">${lue ? "Marquer comme non lue" : "J'ai lu cette fiche"}</button>
+        <button class="btn" aria-pressed="${(U.revoir||[]).includes(f.id)}" onclick="marquerARevoir(${jsArg(f.id)})">${(U.revoir||[]).includes(f.id) ? "Retirer de mes fiches à revoir" : "À revoir plus tard"}</button>
+        <button class="btn" onclick="lancerQuiz(${jsArg(f.m)},10)">S'entraîner sur ${esc(m.nom)}</button>
+      </div>
+    </article>`;
+  window.scrollTo({top:0});
+  if((f.img||[]).some(u => u.startsWith("med:"))) resoudreImages(f.img);
+}
+
+function marquerARevoir(id){
+  U.revoir = U.revoir || [];
+  const i = U.revoir.indexOf(id);
+  if(i >= 0) U.revoir.splice(i,1);
+  else U.revoir.push(id);
+  sauver(); ouvrirFiche(id);
+}
+
+function marquerLue(id){
+  const i = U.lu.indexOf(id);
+  if(i >= 0){ U.lu.splice(i,1); toast("Fiche remise en non lue."); }
+  else { U.lu.push(id); tracer("Fiche lue : " + (DB.fiches.find(f=>f.id===id)||{}).t); toast("Fiche validée, progression mise à jour.","ok"); }
+  sauver(); ouvrirFiche(id);
+}
+
+/* =====================================================================
+   6. QUIZ — 15 secondes par question
+   ===================================================================== */
+const DUREE = 15;
+let Q = null;   // session de quiz en cours
+
+function vueQuiz(){
+  const libre = accesPremium();
+  return `
+  <header class="tete">
+    <p class="eyebrow">Quiz chronométré</p>
+    <h1>15 secondes par question</h1>
+    <p class="muted" style="max-width:620px">Pas de retour en arrière : la question suivante s'affiche automatiquement. Le corrigé complet arrive à la fin.</p>
+  </header>
+
+  <div class="grille g2">
+    ${DB.matieres.map(m => {
+      const n = DB.questions.filter(q => q.m === m.id).length;
+      const p = progressionMatiere(m.id);
+      return `<article class="carte lueur">
+        <div class="entre" style="align-items:flex-start">
+          <div>
+            <h2 style="font-size:20px">${esc(m.nom)}</h2>
+            <p class="small muted" style="margin-top:4px">${n} questions disponibles</p>
+          </div>
+          <span class="pastille">${p.moyenne===null?"jamais testé":"moyenne "+p.moyenne+" %"}</span>
+        </div>
+        <div class="rang" style="margin-top:18px;gap:8px">
+          <button class="btn mini" onclick="lancerQuiz(${jsArg(m.id)},5)">5 questions</button>
+          <button class="btn mini ${libre?"":"fantome"}" onclick="lancerQuiz(${jsArg(m.id)},10)">10 questions ${libre?"":"🔒"}</button>
+          <button class="btn mini ${libre?"":"fantome"}" onclick="lancerQuiz(${jsArg(m.id)},20)">20 questions ${libre?"":"🔒"}</button>
+        </div>
+      </article>`;
+    }).join("")}
+    <article class="carte" style="background:var(--grad-doux)">
+      <h2 style="font-size:20px">Mode examen</h2>
+      <p class="small muted" style="margin:6px 0 18px">Toutes matières mélangées, 20 questions tirées au hasard.</p>
+      <button class="btn ${libre?"primaire":""}" onclick="lancerQuiz('all',20)">Démarrer ${libre?"":"🔒"}</button>
+    </article>
+  </div>
+
+  ${libre ? "" : `<div class="carte" style="margin-top:22px;border-color:rgba(251,191,36,.35)">
+    <div class="entre">
+      <div><h3>Les sessions longues sont réservées aux abonnés</h3>
+      <p class="small muted" style="margin-top:4px">En gratuit : 5 questions par série. L'abonnement à 5 €/mois débloque les séries de 10 et 20 et le mode examen.</p></div>
+      <button class="btn primaire" onclick="App.aller('boutique')">Voir les formules</button>
+    </div></div>`}
+
+  ${(U.quiz||[]).length ? `<section style="margin-top:34px">
+    <p class="eyebrow" style="margin-bottom:12px">Dernières sessions</p>
+    <div class="carte" style="padding:6px 8px"><div class="tbl-scroll"><table>
+      <thead><tr><th>Date</th><th>Matière</th><th>Score</th><th>Note</th></tr></thead>
+      <tbody>${U.quiz.slice(0,8).map(q => `<tr>
+        <td class="muted">${jour(q.date)}</td><td>${esc(nomMat(q.m))}</td>
+        <td>${esc(q.justes)}/${esc(q.total)}</td>
+        <td><b style="color:${q.note>=10?"var(--vert)":"var(--rouge)"}">${q.note}/20</b></td></tr>`).join("")}</tbody>
+    </table></div></div></section>` : ""}`;
+}
+
+function lancerQuiz(mid, nb){
+  if(nb > 5 && !accesPremium()) return murPayant("Les séries de plus de 5 questions sont réservées aux abonnés.");
+  let pool = mid === "all" ? DB.questions.slice() : DB.questions.filter(q => q.m === mid);
+  if(pool.length < 3) return toast("Pas assez de questions dans cette matière.","ko");
+  pool = pool.sort(() => Math.random() - .5).slice(0, Math.min(nb, pool.length));
+  Q = { m:mid, liste:pool, i:0, reponses:[], debut:Date.now(), timer:null, reste:DUREE };
+  afficherQuestion();
+}
+
+function afficherQuestion(){
+  const q = Q.liste[Q.i];
+  const lettres = ["A","B","C","D","E","F"];
+  $("#zone").innerHTML = `
+    <div class="quiz-scene">
+      <div class="entre" style="margin-bottom:14px">
+        <span class="pastille">${esc(nomMat(Q.m))}${q.ch ? " · " + esc(q.ch) : ""}</span>
+        <div class="rang" style="gap:12px">
+          <span class="small muted">Question ${Q.i+1} / ${Q.liste.length}</span>
+          <span id="cpt" style="font-family:var(--mono);font-weight:800;font-size:16px">${DUREE}s</span>
+          <button class="btn fantome mini" onclick="abandonnerQuiz()">Quitter</button>
+        </div>
+      </div>
+      <div class="chrono" id="chrono"><span id="chrono-b"></span></div>
+      <h2 style="margin-bottom:24px;line-height:1.35">${esc(q.q)}</h2>
+      <div id="options">
+        ${q.o.map((o,i) => `<button class="option" onclick="repondre(${i})"><span class="lettre">${lettres[i]}</span>${esc(o)}</button>`).join("")}
+      </div>
+      <p class="tiny muted" style="margin-top:16px;text-align:center">Sans réponse au bout de 15 secondes, la question est comptée comme fausse.</p>
+    </div>`;
+  Q.reste = DUREE;
+  clearInterval(Q.timer);
+  const b = $("#chrono-b");
+  b.style.transition = "width 1s linear"; b.style.width = "100%";
+  requestAnimationFrame(()=>{ b.style.transitionDuration = DUREE + "s"; b.style.width = "0%"; });
+  Q.timer = setInterval(() => {
+    Q.reste--;
+    const c = $("#cpt"); if(!c){ clearInterval(Q.timer); return; }
+    c.textContent = Q.reste + "s";
+    if(Q.reste <= 5){ c.style.color = "var(--rouge)"; $("#chrono").classList.add("urgent"); }
+    if(Q.reste <= 0){ clearInterval(Q.timer); repondre(-1); }
+  }, 1000);
+}
+
+function repondre(idx){
+  if(!Q || Q.transition || !Q.liste[Q.i])return;
+  const session=Q;Q.transition=true;
+  clearInterval(Q.timer);
+  const q = Q.liste[Q.i];
+  Q.reponses.push({ id:q.id, choix:idx, juste: idx === q.r });
+  const btns = document.querySelectorAll("#options .option");
+  btns.forEach((b,i) => {
+    b.disabled = true;
+    if(i === q.r) b.classList.add("juste");
+    else if(i === idx) b.classList.add("faux");
+  });
+  Q.i++;
+  setTimeout(() => { if(Q!==session)return;Q.transition=false;if(Q.i < Q.liste.length) afficherQuestion(); else terminerQuiz(); }, 650);
+}
+
+function abandonnerQuiz(){
+  clearInterval(Q.timer); Q = null; App.aller("quiz");
+}
+
+function terminerQuiz(){
+  const justes = Q.reponses.filter(r => r.juste).length;
+  const total  = Q.liste.length;
+  const note   = Math.round(justes / total * 20 * 10) / 10;
+  const duree  = Math.round((Date.now() - Q.debut)/1000);
+  U.quiz = U.quiz || [];
+  U.quiz.unshift({ m:Q.m, justes, total, note, date:Date.now(), duree });
+  U.quiz = U.quiz.slice(0,40);
+  tracer(`Quiz ${nomMat(Q.m)} — ${justes}/${total}`);
+  sauver();
+
+  const m = Q.m === "all" ? {c1:"#8B5CF6",c2:"#EC4899"} : mat(Q.m);
+  const pct = Math.round(justes/total*100);
+  const verdict = pct >= 80 ? "Très solide." : pct >= 60 ? "Bonne base, quelques points à revoir." : pct >= 40 ? "Le cours mérite une relecture." : "Reprends la fiche avant de retenter.";
+  const lettres = ["A","B","C","D","E","F"];
+
+  $("#zone").innerHTML = `
+    <div class="quiz-scene">
+      <div class="carte lueur" style="text-align:center;padding:34px 24px;margin-bottom:26px">
+        <p class="eyebrow">Résultat · ${esc(nomMat(Q.m))}</p>
+        <div class="note-cercle" style="margin:18px 0 10px">
+          <div class="note-nb grad-txt">${note}</div>
+          <div class="small muted">sur 20</div>
+        </div>
+        <p style="font-weight:640;margin-bottom:6px">${justes} bonnes réponses sur ${total}</p>
+        <p class="small muted">${verdict} · ${duree} s au total</p>
+        <div class="rang" style="justify-content:center;margin-top:22px;gap:10px">
+          <button class="btn primaire" onclick="lancerQuiz(${jsArg(Q.m)},${total})">Refaire une série</button>
+          <button class="btn" onclick="App.aller('progression')">Voir ma progression</button>
+        </div>
+      </div>
+
+      <p class="eyebrow" style="margin-bottom:14px">Corrigé détaillé</p>
+      ${Q.reponses.map((r,i) => {
+        const q = Q.liste[i];
+        return `<div class="correction ${r.juste?"ok":"ko"}">
+          <p style="font-weight:660;margin-bottom:8px">${i+1}. ${esc(q.q)}</p>
+          <p class="small" style="margin-bottom:4px">
+            ${r.choix === -1
+              ? `<span style="color:var(--ambre)">Temps écoulé, aucune réponse donnée.</span>`
+              : `Ta réponse : <b style="color:${r.juste?"var(--vert)":"var(--rouge)"}">${lettres[r.choix]}. ${esc(q.o[r.choix])}</b>`}
+          </p>
+          ${r.juste ? "" : `<p class="small" style="margin-bottom:6px">Bonne réponse : <b style="color:var(--vert)">${lettres[q.r]}. ${esc(q.o[q.r])}</b></p>`}
+          <p class="small muted" style="line-height:1.6">${esc(q.e||"")}</p>
+        </div>`;
+      }).join("")}
+      <button class="btn" style="margin-top:14px" onclick="App.aller('quiz')">← Retour aux quiz</button>
+    </div>`;
+  window.scrollTo({top:0});
+}
+
+/* =====================================================================
+   6 bis. FLASHCARDS
+   Les cartes sont fabriquées à partir des fiches : un point rédigé
+   « Terme : définition » donne un recto et un verso.
+   ===================================================================== */
+let Flash = null;
+
+function fabriquerCartes(mid, source){
+  const cartes = [];
+  const propre = t => sansBalises(t).replace(/\s+/g, " ").trim();
+
+  if(source !== "questions"){
+    DB.fiches.filter(f => mid === "all" || f.m === mid).forEach(f => {
+      if(f.prem && !accesPremium()) return;
+      (f.s || []).forEach(sec => sec.l.forEach(ligne => {
+        const t = propre(ligne);
+        const coupe = t.match(/^(.{3,70}?)\s*[:–—]\s+(.{12,})$/);
+        if(coupe) cartes.push({ r:coupe[1], v:coupe[2], src:f.t + " · " + sec.h, m:f.m });
+      }));
+    });
+  }
+  if(source !== "fiches"){
+    DB.questions.filter(q => mid === "all" || q.m === mid).forEach(q => {
+      cartes.push({ r:propre(q.q), v:propre(q.o[q.r]) + (q.e ? "\n\n" + propre(q.e) : ""), src:"Question · " + (q.ch || nomMat(q.m)), m:q.m });
+    });
+  }
+  return cartes;
+}
+
+function vueFlashcards(){
+  return `
+  <header class="tete">
+    <p class="eyebrow">Révision active</p>
+    <h1>Flashcards</h1>
+    <p class="muted" style="max-width:640px">Le terme d'un côté, la définition de l'autre. Tu retournes la carte, tu juges si tu savais, et l'appli te repropose seulement ce qui n'est pas acquis.</p>
+  </header>
+
+  <div class="carte lueur" style="margin-bottom:22px">
+    <p class="eyebrow" style="margin-bottom:12px">Source des cartes</p>
+    <div class="matiere-onglets" style="margin-bottom:0">
+      ${[["fiches","Points de cours"],["questions","Questions de quiz"],["tout","Les deux"]]
+        .map(([k,n]) => `<button class="chip ${sourceFlash===k?"actif":""}" onclick="sourceFlash=${jsArg(k)};App.aller('flashcards')">${n}</button>`).join("")}
+    </div>
+  </div>
+
+  <div class="grille g2">
+    ${DB.matieres.map(m => {
+      const n = fabriquerCartes(m.id, sourceFlash).length;
+      return `<article class="carte">
+        <div style="height:5px;border-radius:99px;background:linear-gradient(90deg,${m.c1},${m.c2});margin-bottom:14px"></div>
+        <h2 style="font-size:19px">${esc(m.nom)}</h2>
+        <p class="small muted" style="margin:5px 0 16px">${n} carte${n>1?"s":""} disponible${n>1?"s":""}</p>
+        <div class="rang" style="gap:8px">
+          <button class="btn mini" onclick="lancerFlash(${jsArg(m.id)},15)" ${n?"":"disabled"}>15 cartes</button>
+          <button class="btn mini" onclick="lancerFlash(${jsArg(m.id)},30)" ${n>15?"":"disabled"}>30 cartes</button>
+          <button class="btn primaire mini" onclick="lancerFlash(${jsArg(m.id)},0)" ${n?"":"disabled"}>Tout</button>
+        </div>
+      </article>`;
+    }).join("")}
+    <article class="carte" style="background:var(--grad-doux)">
+      <h2 style="font-size:19px">Mélange général</h2>
+      <p class="small muted" style="margin:5px 0 16px">${fabriquerCartes("all", sourceFlash).length} cartes, toutes matières confondues.</p>
+      <button class="btn primaire mini" onclick="lancerFlash('all',25)">25 cartes au hasard</button>
+    </article>
+  </div>
+
+  ${(U.flash||[]).length ? `<section style="margin-top:30px">
+    <p class="eyebrow" style="margin-bottom:12px">Dernières séances</p>
+    <div class="carte" style="padding:6px 8px"><div class="tbl-scroll"><table>
+      <thead><tr><th>Date</th><th>Matière</th><th>Cartes</th><th>Sues</th></tr></thead>
+      <tbody>${U.flash.slice(0,6).map(x => `<tr><td class="muted">${jour(x.date)}</td>
+        <td>${esc(nomMat(x.m))}</td><td>${x.total}</td>
+        <td><b style="color:${x.connues/x.total>=.7?"var(--vert)":"var(--ambre)"}">${x.connues}</b></td></tr>`).join("")}</tbody>
+    </table></div></div></section>` : ""}`;
+}
+
+let sourceFlash = "fiches";
+
+function lancerFlash(mid, nb, reprise){
+  let paquet = reprise || fabriquerCartes(mid, sourceFlash).sort(() => Math.random() - .5);
+  if(!reprise && nb) paquet = paquet.slice(0, nb);
+  if(!paquet.length) return toast("Aucune carte à réviser ici.","ko");
+  Flash = { m:mid, paquet, i:0, connues:0, aRevoir:[], retournee:false, debut:Date.now() };
+  afficherCarte();
+}
+
+function afficherCarte(){
+  const F = Flash, c = F.paquet[F.i];
+  $("#zone").innerHTML = `
+    <div class="scene-flash">
+      <div class="entre" style="margin-bottom:14px">
+        <span class="pastille">${esc(nomMat(F.m))}</span>
+        <div class="rang" style="gap:12px">
+          <span class="small muted">${F.i+1} / ${F.paquet.length}</span>
+          <button class="btn fantome mini" onclick="Flash=null;App.aller('flashcards')">Quitter</button>
+        </div>
+      </div>
+
+      <div class="pile">${F.paquet.map((_,i) =>
+        `<span class="${i < F.i ? "faite" : i === F.i ? "encours" : ""}"></span>`).join("")}</div>
+
+      <div class="carte-flash ${F.retournee?"retournee":""}" id="carte-flash" onclick="retournerCarte()">
+        <div class="flash-inner ${c.schemaR || c.schemaV ? 'avec-schema' : ''}">
+          <div class="flash-face" ${F.retournee ? 'inert aria-hidden="true"' : ''}>
+            <span class="etiquette">Recto</span>
+            <div class="recto">${esc(c.r)}</div>
+            ${htmlSchemaFlash(c.schemaR, "Schéma du recto")}
+            <div class="source">${esc(c.src)}</div>
+          </div>
+          <div class="flash-face dos" ${F.retournee ? '' : 'inert aria-hidden="true"'}>
+            <span class="etiquette">Verso</span>
+            <div class="verso">${esc(c.v).replace(/\n\n/g,"<br><br>")}</div>
+            ${htmlSchemaFlash(c.schemaV, "Schéma du verso")}
+          </div>
+        </div>
+      </div>
+
+      <p class="indice-retourner">${F.retournee ? "Tu savais ?" : "Clique sur la carte pour la retourner"}</p>
+      ${F.retournee ? '' : '<button type="button" class="btn large" id="flash-retourner" style="margin-bottom:16px" onclick="retournerCarte()">Afficher la réponse</button>'}
+
+      <div class="rang" style="gap:10px;justify-content:center" id="jugement" ${F.retournee?"":'style="display:none"'}>
+        <button class="btn" style="border-color:rgba(251,113,133,.45);color:var(--rouge)" onclick="jugerCarte(false)">À revoir</button>
+        <button class="btn primaire" onclick="jugerCarte(true)">Je savais</button>
+      </div>
+    </div>`;
+  if(!F.retournee){ const j = $("#jugement"); if(j) j.style.display = "none"; }
+  window.scrollTo({top:0});
+  resoudreImages([c.schemaR,c.schemaV].filter(Boolean), $("#zone"));
+}
+
+function htmlSchemaFlash(source, titre){
+  if(!source) return "";
+  return `<img class="flash-schema" src="${sourceImage(source)}" data-med="${esc(source)}" alt="${titre}" loading="lazy">
+    <button type="button" class="btn mini flash-schema-outils" onclick="event.stopPropagation();const img=this.previousElementSibling;zoomer(img.src,img.alt)">Agrandir le schéma</button>`;
+}
+
+function retournerCarte(){
+  if(Flash.retournee) return;
+  Flash.retournee = true;
+  $("#carte-flash").classList.add("retournee");
+  document.querySelectorAll('.flash-face').forEach(face=>{
+    const cachee=!face.classList.contains('dos');face.inert=cachee;face.setAttribute('aria-hidden',String(cachee));
+  });
+  const bouton=document.getElementById('flash-retourner');if(bouton)bouton.remove();
+  $("#jugement").style.display = "flex";
+  document.querySelector(".indice-retourner").textContent = "Tu savais ?";
+}
+
+function jugerCarte(sue){
+  const F = Flash;
+  if(sue) F.connues++; else F.aRevoir.push(F.paquet[F.i]);
+  F.i++; F.retournee = false;
+  if(F.i < F.paquet.length) afficherCarte(); else terminerFlash();
+}
+
+function terminerFlash(){
+  const F = Flash;
+  const total = F.paquet.length, part = Math.round(F.connues / total * 100);
+  U.flash = U.flash || [];
+  U.flash.unshift({ m:F.m, total, connues:F.connues, date:Date.now() });
+  U.flash = U.flash.slice(0,30);
+  tracer(`Flashcards ${nomMat(F.m)} — ${F.connues}/${total}`);
+  sauver();
+
+  $("#zone").innerHTML = `
+    <div class="scene-flash">
+      <div class="carte lueur" style="text-align:center;padding:34px 24px">
+        <p class="eyebrow">Séance terminée · ${esc(nomMat(F.m))}</p>
+        <div class="note-nb grad-txt" style="margin:18px 0 6px">${part}%</div>
+        <p style="font-weight:640;margin-bottom:6px">${F.connues} carte${F.connues>1?"s":""} sue${F.connues>1?"s":""} sur ${total}</p>
+        <p class="small muted">${part>=85?"C'est acquis.":part>=60?"Encore quelques passages à consolider.":"Reprends la fiche, puis refais une séance."}</p>
+        <div class="rang" style="justify-content:center;margin-top:22px;gap:10px;flex-wrap:wrap">
+          ${F.aRevoir.length ? `<button class="btn primaire" onclick="lancerFlash(${jsArg(F.m)},0,REPRISE)">Revoir les ${F.aRevoir.length} non sues</button>` : ""}
+          <button class="btn" onclick="lancerFlash(${jsArg(F.m)},${total})">Nouvelle séance</button>
+          <button class="btn fantome" onclick="Flash=null;App.aller('flashcards')">Terminer</button>
+        </div>
+      </div>
+    </div>`;
+  window.REPRISE = F.aRevoir;
+  window.scrollTo({top:0});
+}
+
+/* =====================================================================
+   7. PROGRESSION
+   ===================================================================== */
+function vueProgression(){
+  const g = progressionGlobale();
+  const hist = (U.quiz||[]).slice(0,12).reverse();
+  const journal = (U.journal||[]).slice(0,10);
+
+  return `
+  <header class="tete">
+    <p class="eyebrow">Suivi d'apprentissage</p>
+    <h1>Où tu en es, matière par matière</h1>
+    <p class="muted" style="max-width:640px">Le pourcentage combine les fiches lues (40 %) et la moyenne de tes cinq dernières séries de quiz (60 %).</p>
+  </header>
+
+  <div class="carte lueur entre" style="margin-bottom:22px">
+    <div>
+      <p class="eyebrow">Progression globale</p>
+      <h2 style="margin:6px 0 8px">${g}% du programme assimilé</h2>
+      <p class="small muted">${U.lu.length} fiches lues · ${(U.quiz||[]).length} séries de quiz terminées</p>
+    </div>
+    ${anneau(g,"#8B5CF6","#EC4899",112)}
+  </div>
+
+  <div class="grille g2" style="margin-bottom:26px">
+    ${DB.matieres.map(m => {
+      const p = progressionMatiere(m.id);
+      return `<article class="carte">
+        <div class="rang" style="gap:16px;align-items:center">
+          ${anneau(p.pct,m.c1,m.c2,78)}
+          <div style="flex:1;min-width:0">
+            <h3>${esc(m.nom)}</h3>
+            <p class="small muted" style="margin:4px 0 10px">${p.lues}/${p.total} fiches · ${p.tests} quiz</p>
+            <div class="barre"><span style="width:${p.pct}%"></span></div>
+            <p class="tiny muted" style="margin-top:7px">${p.moyenne===null ? "Aucun quiz passé" : "Moyenne quiz : "+p.moyenne+" %"}</p>
+          </div>
+        </div>
+        <button class="btn mini" style="margin-top:14px" onclick="choisirMatiere(${jsArg(m.id)})">Ouvrir les fiches</button>
+      </article>`;
+    }).join("")}
+  </div>
+
+  ${hist.length >= 2 ? `<section class="carte" style="margin-bottom:22px">
+    <p class="eyebrow" style="margin-bottom:16px">Courbe des notes (12 dernières séries)</p>
+    <svg viewBox="0 0 600 160" style="width:100%;height:170px">
+      <defs><linearGradient id="gCourbe" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#38BDF8"/><stop offset="100%" stop-color="#EC4899"/></linearGradient></defs>
+      ${[0,5,10,15,20].map(v => `<line x1="30" x2="590" y1="${150-v*6.5}" y2="${150-v*6.5}" stroke="rgba(167,139,250,.14)"/>
+        <text x="4" y="${154-v*6.5}" fill="#6F6699" font-size="10">${v}</text>`).join("")}
+      <polyline fill="none" stroke="url(#gCourbe)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"
+        points="${hist.map((q,i)=>`${30 + i*(560/Math.max(hist.length-1,1))},${150 - q.note*6.5}`).join(" ")}"/>
+      ${hist.map((q,i)=>`<circle cx="${30 + i*(560/Math.max(hist.length-1,1))}" cy="${150 - q.note*6.5}" r="4" fill="#fff"/>`).join("")}
+    </svg>
+  </section>` : ""}
+
+  <section class="carte">
+    <p class="eyebrow" style="margin-bottom:14px">Journal d'activité</p>
+    ${journal.length ? `<div class="tbl-scroll"><table><tbody>
+      ${journal.map(j => `<tr><td class="muted" style="width:170px">${new Date(j.d).toLocaleString("fr-FR",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"})}</td><td>${esc(j.a)}</td></tr>`).join("")}
+    </tbody></table></div>` : `<p class="small muted">Rien pour l'instant. Ouvre une fiche ou lance un quiz.</p>`}
+  </section>`;
+}
+
+/* =====================================================================
+   8. BOUTIQUE, PAIEMENT ET LICENCES
+   ===================================================================== */
+function murPayant(msg){
+  modale(`<p class="eyebrow">Contenu premium</p>
+    <h2 style="margin:8px 0 10px">Débloque tout le programme</h2>
+    <p class="small muted" style="margin-bottom:18px">${esc(msg)}</p>
+    <ul class="liste-plan">
+      <li>Toutes les fiches, y compris les chapitres avancés</li>
+      <li>Séries de 10 et 20 questions et mode examen</li>
+      <li>Suivi détaillé et courbe de progression</li>
+    </ul>
+    <div class="rang" style="gap:10px;margin-top:6px">
+      <button class="btn primaire" style="flex:1" onclick="fermerModale();App.aller('boutique')">Voir les formules</button>
+      <button class="btn fantome" onclick="fermerModale()">Plus tard</button>
+    </div>`);
+}
+
+function vueBoutique(){
+  const actif = aboActif(U);
+  return `
+  <header class="tete">
+    <p class="eyebrow">Boutique</p>
+    <h1>Abonnement et ouvrages</h1>
+    <p class="muted" style="max-width:640px">L'abonnement ouvre tout le contenu en ligne. Les livres au format PDF s'achètent une fois et restent dans ta bibliothèque.</p>
+  </header>
+
+  ${actif ? `<div class="carte" style="border-color:rgba(52,211,153,.4);margin-bottom:26px">
+    <div class="entre"><div>
+      <span class="pastille vert">${monAbo().statut === "resilie" ? "Abonnement résilié" : "Abonnement actif"}</span>
+      <h3 style="margin:8px 0 4px">${monAbo().plan === "annuel" ? "Formule annuelle" : "Formule mensuelle"}</h3>
+      <p class="small muted">${monAbo().statut === "resilie" ? "Accès jusqu'au " : "Prochain renouvellement le "}${jour(monAbo().fin)} · ${joursRestants(U)} jours restants</p>
+    </div><button class="btn" onclick="resilier()">${monAbo().statut === "resilie" ? "Reprendre" : "Gérer ou résilier"}</button></div>
+  </div>` : ""}
+
+  <p class="eyebrow" style="margin-bottom:14px">Formules d'abonnement</p>
+  <div class="grille g2" style="margin-bottom:34px">
+    <article class="carte plan">
+      <h3 style="font-size:18px">Mensuel</h3>
+      <p class="small muted" style="margin-top:4px">Sans engagement, renouvelable chaque mois.</p>
+      <p class="prix grad-txt" style="margin-top:16px">5 € <span style="font-size:14px;font-weight:600;color:var(--doux)">/ mois</span></p>
+      <ul class="liste-plan">
+        <li>Toutes les fiches des trois matières</li>
+        <li>Quiz illimités et mode examen</li>
+        <li>Suivi de progression complet</li>
+      </ul>
+      <button class="btn large" onclick="paiement('abo','mensuel',5)">Choisir le mensuel</button>
+    </article>
+
+    <article class="carte plan vedette">
+      <span class="ruban">2 mois offerts</span>
+      <h3 style="font-size:18px">Annuel</h3>
+      <p class="small muted" style="margin-top:4px">50 € pour douze mois, soit 4,17 € par mois.</p>
+      <p class="prix grad-txt" style="margin-top:16px">50 € <span style="font-size:14px;font-weight:600;color:var(--doux)">/ an</span></p>
+      <ul class="liste-plan">
+        <li>Tout le contenu du mensuel</li>
+        <li>Licence valable 12 mois</li>
+        <li>Nouvelles fiches incluses</li>
+      </ul>
+      <button class="btn primaire large" onclick="paiement('abo','annuel',50)">Choisir l'annuel</button>
+    </article>
+  </div>
+
+  <div class="entre" style="margin-bottom:14px">
+    <p class="eyebrow">Ouvrages au format PDF</p>
+    <button class="btn mini fantome" onclick="modaleLicence()">J'ai un code de licence</button>
+  </div>
+  <div class="grille g2">
+    ${DB.livres.map(l => {
+      const ok = possede(l.id);
+      return `<article class="carte livre">
+        <div class="couv" style="background:linear-gradient(150deg,${l.c1},${l.c2})">
+          <div><p class="tiny" style="letter-spacing:.2em;text-transform:uppercase;opacity:.85;position:relative;z-index:1">Édition 2026</p>
+          <h3 style="margin-top:8px">${esc(l.titre)}</h3>
+          <p class="small" style="opacity:.9;position:relative;z-index:1;margin-top:6px">${esc(l.soustitre||"")}</p></div>
+        </div>
+        <div class="livre-corps">
+          <p class="small muted" style="line-height:1.6">${esc(l.desc)}</p>
+          <p class="tiny muted">${l.pages} pages · PDF ${l.m === "all" ? "multi-matières" : esc(nomMat(l.m))}</p>
+          <div class="entre" style="margin-top:auto;padding-top:8px">
+            <span class="prix grad-txt">${l.prix} €</span>
+            ${ok ? `<button class="btn mini" onclick="telechargerLivre(${jsArg(l.id)})">Télécharger</button>`
+                 : `<button class="btn primaire mini" onclick="paiement('livre',${jsArg(l.id)},${l.prix})">Acheter</button>`}
+          </div>
+        </div>
+      </article>`;
+    }).join("")}
+  </div>`;
+}
+
+async function paiement(type, ref, prix){
+  if(MODE_CLOUD && CONFIG_PAIEMENT.mode === "stripe"){
+    modale(`<div style="text-align:center;padding:14px 4px">
+      <p class="eyebrow">Paiement</p>
+      <h2 style="margin:10px 0 8px">Redirection vers Stripe</h2>
+      <p class="small muted">Ouverture de la page de paiement sécurisée…</p></div>`);
+    try{
+      const { url } = await appelServeur("creer-paiement", { type, ref });
+      window.location.href = url;
+    }catch(e){
+      fermerModale();
+      toast("Paiement indisponible : " + e.message, "ko");
+    }
+    return;
+  }
+  paiementDemo(type, ref, prix);
+}
+
+function paiementDemo(type, ref, prix){
+  const titre = type === "abo"
+    ? (ref === "annuel" ? "Abonnement annuel" : "Abonnement mensuel")
+    : (DB.livres.find(l => l.id === ref)||{}).titre;
+  modale(`
+    <p class="eyebrow">Paiement sécurisé</p>
+    <h2 style="margin:8px 0 4px">${esc(titre)}</h2>
+    <p class="small muted" style="margin-bottom:20px">Montant à régler : <b style="color:var(--texte)">${prix} €</b></p>
+    <form onsubmit="validerPaiement(event,${jsArg(type)},${jsArg(ref)},${prix})">
+      <div class="champ"><label for="p-nom">Nom sur la carte</label><input id="p-nom" required value="${esc(U.nom)}"></div>
+      <div class="champ"><label for="p-num">Numéro de carte</label><input id="p-num" required placeholder="4242 4242 4242 4242" inputmode="numeric"></div>
+      <div class="rang" style="gap:12px">
+        <div class="champ" style="flex:1"><label for="p-exp">Expiration</label><input id="p-exp" required placeholder="12/28"></div>
+        <div class="champ" style="width:110px"><label for="p-cvc">CVC</label><input id="p-cvc" required placeholder="123" inputmode="numeric"></div>
+      </div>
+      <button class="btn primaire large" type="submit" style="margin-top:6px">Payer ${prix} €</button>
+      <button class="btn fantome" type="button" style="width:100%;margin-top:8px" onclick="fermerModale()">Annuler</button>
+      <p class="tiny muted" style="margin-top:14px;text-align:center;line-height:1.5">Démonstration : aucun paiement réel n'est effectué et aucune donnée bancaire n'est enregistrée. Branche ici ton prestataire (Stripe, Mollie…).</p>
+    </form>`);
+}
+
+function validerPaiement(e, type, ref, prix){
+  e.preventDefault();
+  fermerModale();
+  if(type === "abo"){
+    const duree = ref === "annuel" ? 365 : 30;
+    const base = aboActif(U) ? U.abo.fin : Date.now();
+    U.abo = { plan:ref, debut:Date.now(), fin: base + duree*86400000, licence: codeLicence() };
+    tracer("Abonnement " + ref + " activé");
+    toast("Abonnement actif jusqu'au " + jour(U.abo.fin) + ".","ok");
+  } else {
+    if(ref === "liv-04"){ DB.livres.forEach(l => { if(!U.achats.includes(l.id)) U.achats.push(l.id); }); }
+    else if(!U.achats.includes(ref)) U.achats.push(ref);
+    tracer("Achat : " + (DB.livres.find(l=>l.id===ref)||{}).titre);
+    toast("Achat validé, l'ouvrage est dans ta bibliothèque.","ok");
+  }
+  DB.ventes.unshift({ id:uid("v"), user:U.email, type, ref, prix, date:Date.now() });
+  sauver(); sauverListes(); App.aller(type === "abo" ? "boutique" : "bibliotheque");
+}
+
+async function resilier(){
+  if(MODE_CLOUD && CONFIG_PAIEMENT.mode === "stripe"){
+    const a = monAbo();
+    if(a && a.licence)
+      return toast("Cet accès vient d'un code de licence : il s'arrêtera de lui-même à l'échéance.");
+    toast("Ouverture de ton espace de gestion…");
+    try{
+      const { url } = await appelServeur("portail-client");
+      window.location.href = url;
+    }catch(e){ toast("Espace indisponible : " + e.message, "ko"); }
+    return;
+  }
+  modale(`<h2 style="margin-bottom:8px">Résilier l'abonnement</h2>
+    <p class="small muted" style="margin-bottom:20px">L'accès premium se coupe immédiatement. Les livres achetés restent accessibles.</p>
+    <div class="rang" style="gap:10px">
+      <button class="btn danger" style="flex:1" onclick="confirmerResiliation()">Résilier maintenant</button>
+      <button class="btn fantome" onclick="fermerModale()">Garder</button>
+    </div>`);
+}
+function confirmerResiliation(){
+  U.abo = null; tracer("Abonnement résilié"); sauver(); fermerModale();
+  toast("Abonnement résilié."); App.aller("boutique");
+}
+
+function codeLicence(){
+  const b = () => Array.from(crypto.getRandomValues(new Uint8Array(8)),n=>n.toString(16).padStart(2,"0")).join("").toUpperCase();
+  return "SWA-" + b() + "-" + b() + "-" + b();
+}
+function modaleLicence(){
+  modale(`<p class="eyebrow">Licence</p>
+    <h2 style="margin:8px 0 10px">Activer un code</h2>
+    <p class="small muted" style="margin-bottom:18px">Saisis le code fourni avec ton achat ou par ton établissement.</p>
+    <form onsubmit="activerLicence(event)">
+      <div class="champ"><input id="lic-code" placeholder="SWA-XXXX-XXXX-XXXX" required style="font-family:var(--mono);text-transform:uppercase"></div>
+      <button class="btn primaire large" type="submit">Activer</button>
+      <button class="btn fantome" type="button" style="width:100%;margin-top:8px" onclick="fermerModale()">Fermer</button>
+    </form>`);
+}
+async function activerLicence(e){
+  e.preventDefault();
+  const code = $("#lic-code").value.trim().toUpperCase();
+  if(MODE_CLOUD){
+    try{
+      const r = await appelServeur("activer-licence", { code });
+      await chargerDroits();
+      await chargerContenu();
+      fermerModale();
+      tracer("Licence activée : " + code); sauver();
+      toast("Licence " + r.plan + " activée jusqu'au " + jour(r.fin) + ".","ok");
+      return App.aller("boutique");
+    }catch(err){ return toast(err.message, "ko"); }
+  }
+  const l = DB.licences.find(x => x.code === code);
+  if(!l) return toast("Code inconnu.","ko");
+  if(l.utilisee) return toast("Ce code a déjà été utilisé.","ko");
+  const duree = l.type === "annuel" ? 365 : 30;
+  const base = aboActif(U) ? U.abo.fin : Date.now();
+  U.abo = { plan:l.type, debut:Date.now(), fin: base + duree*86400000, licence:code };
+  l.utilisee = true; l.par = U.email; l.dateUtil = Date.now();
+  tracer("Licence activée : " + code);
+  sauver(); sauverListes(); fermerModale();
+  toast("Licence " + l.type + " activée jusqu'au " + jour(U.abo.fin) + ".","ok");
+  App.aller("boutique");
+}
+
+/* =====================================================================
+   9. BIBLIOTHÈQUE
+   ===================================================================== */
+function vueBibliotheque(){
+  const mes = DB.livres.filter(l => possede(l.id));
+  return `
+  <header class="tete">
+    <p class="eyebrow">Bibliothèque</p>
+    <h1>Tes ouvrages</h1>
+    <p class="muted">Le PDF est généré à partir des fiches de la matière, prêt à imprimer ou à enregistrer.</p>
+  </header>
+  ${mes.length ? `<div class="grille g2">${mes.map(l => `
+    <article class="carte livre">
+      <div class="couv" style="background:linear-gradient(150deg,${l.c1},${l.c2});height:150px">
+        <h3 style="position:relative;z-index:1">${esc(l.titre)}</h3>
+      </div>
+      <div class="livre-corps">
+        <p class="small muted">${esc(l.desc)}</p>
+        <ul class="liste-plan" style="margin:4px 0">${(l.sommaire||[]).slice(0,4).map(s=>`<li>${esc(s)}</li>`).join("")}</ul>
+        <button class="btn primaire" style="margin-top:auto" onclick="telechargerLivre(${jsArg(l.id)})">Ouvrir le PDF</button>
+      </div>
+    </article>`).join("")}</div>`
+  : `<div class="vide"><h3>Aucun ouvrage pour le moment</h3>
+      <p class="small" style="margin-bottom:18px">Les PDF achetés apparaissent ici, définitivement.</p>
+      <button class="btn primaire" onclick="App.aller('boutique')">Voir la boutique</button></div>`}`;
+}
+
+async function telechargerLivre(id){
+  const l = DB.livres.find(x => x.id === id);
+  if(!possede(id)) return toast("Cet ouvrage n'est pas dans ta bibliothèque.","ko");
+  if(l.pdf){                                   // vrai PDF déposé par le développeur
+    tracer("PDF ouvert : " + l.titre); sauver();
+    window.open(SWA_SECURITY.url(l.pdf), "_blank", "noopener");
+    return;
+  }
+  let fiches = l.m === "all" ? DB.fiches : DB.fiches.filter(f => f.m === l.m);
+  if(MODE_CLOUD){try{fiches=(await appelServeur('site-api',{action:'book',id})).fiches;}catch(error){return toast(error.message,'ko');}}
+  for(const f of fiches) for(const u of (f.img||[])) await resoudreMedia(u);
+  const doc = `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>${esc(l.titre)}</title><style>
+    @page{margin:18mm 16mm}
+    body{font-family:Georgia,"Times New Roman",serif;color:#1A1330;line-height:1.6;font-size:11.5pt}
+    .garde{height:88vh;display:flex;flex-direction:column;justify-content:center;text-align:center;page-break-after:always;
+      background:linear-gradient(150deg,${l.c1},${l.c2});color:#fff;margin:-10mm;padding:40mm 20mm;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .garde h1{font-size:34pt;margin:0 0 10pt;letter-spacing:-1px}
+    .garde p{font-size:13pt;opacity:.92}
+    h2{font-size:17pt;color:${l.c1};border-bottom:2px solid ${l.c2};padding-bottom:5pt;margin:22pt 0 10pt;page-break-after:avoid}
+    h3{font-size:12.5pt;margin:14pt 0 6pt;color:#3B2C63;page-break-after:avoid}
+    ul{margin:0 0 10pt 16pt}li{margin-bottom:4pt}
+    .note{border-left:3px solid ${l.c2};background:#F6F2FF;padding:8pt 12pt;margin:10pt 0;font-style:italic}
+    .chap{font-size:8.5pt;letter-spacing:2px;text-transform:uppercase;color:#8A7FB5}
+    footer{position:fixed;bottom:6mm;width:100%;text-align:center;font-size:8pt;color:#8A7FB5}
+  </style></head><body>
+  <div class="garde"><h1>${esc(l.titre)}</h1><p>${esc(l.soustitre||"")}</p>
+    <p style="margin-top:24pt;font-size:10pt">Studywithaaly · Édition 2026</p></div>
+  <h2>Sommaire</h2><ul>${(l.sommaire||[]).map(s=>`<li>${esc(s)}</li>`).join("")}</ul>
+  ${fiches.map(f => `<section><p class="chap">${esc(nomMat(f.m))} · ${esc(f.ch)}</p><h2>${esc(f.t)}</h2>
+    ${f.s.map(s => `<h3>${esc(s.h)}</h3><ul>${s.l.map(x=>`<li>${SWA_SECURITY.rich(x)}</li>`).join("")}</ul>`).join("")}
+    ${(f.img||[]).map(u => `<img src="${sourceImage(u)}" style="max-width:100%;margin:10pt 0;page-break-inside:avoid">`).join("")}
+    ${f.note ? `<div class="note"><b>À retenir —</b> ${SWA_SECURITY.rich(f.note)}</div>` : ""}</section>`).join("")}
+  <footer>${esc(l.titre)} — Studywithaaly · studywithaaly.fr</footer>
+  </body></html>`;
+
+  const w = window.open("", "_blank");
+  if(!w) return toast("Autorise les fenêtres pop-up pour générer le PDF.","ko");
+  w.onload=()=>setTimeout(()=>w.print(),400); w.document.write(doc); w.document.close();
+  tracer("PDF ouvert : " + l.titre); sauver();
+  toast("Choisis « Enregistrer au format PDF » dans la boîte d'impression.");
+}
+
+/* =====================================================================
+   10. PROFIL
+   ===================================================================== */
+function vueProfil(){
+  const g = progressionGlobale();
+  return `
+  <header class="tete"><p class="eyebrow">Compte</p><h1>Ton profil</h1></header>
+
+  ${adresseConfirmee() ? "" : `<div class="carte" style="border-color:rgba(251,191,36,.45);margin-bottom:20px">
+    <div class="entre">
+      <div style="flex:1;min-width:220px">
+        <span class="pastille or">Adresse non confirmée</span>
+        <h3 style="margin:9px 0 4px">Confirme ton adresse e-mail</h3>
+        <p class="small muted">Un message a été envoyé à ${esc(U.email)} lors de la création du compte. Ouvre le lien qu'il contient, puis reviens ici. Pense à regarder dans les indésirables.</p>
+      </div>
+      <div class="rang" style="gap:8px">
+        <button class="btn mini" onclick="envoyerConfirmation()">Renvoyer</button>
+        <button class="btn primaire mini" onclick="verifierConfirmation()">J'ai confirmé</button>
+      </div>
+    </div>
+  </div>`}
+
+  <div class="grille g2">
+    <article class="carte lueur">
+      <div class="rang" style="gap:14px;margin-bottom:18px">
+        <div class="avatar" style="width:52px;height:52px;font-size:20px;border-radius:14px">${esc((U.nom[0]||"?").toUpperCase())}</div>
+        <div><h3 style="font-size:18px">${esc(U.nom)}</h3><p class="small muted">${esc(U.email)}</p></div>
+      </div>
+      <table><tbody>
+        <tr><td class="muted">Formule</td><td><b>${esc(libellePlan(U))}</b></td></tr>
+        ${monAbo() ? `<tr><td class="muted">Référence</td><td style="font-family:var(--mono);font-size:12px">${esc(monAbo().licence || monAbo().stripeSub || "—")}</td></tr>
+        <tr><td class="muted">Échéance</td><td>${jour(monAbo().fin)}</td></tr>` : ""}
+        <tr><td class="muted">Inscription</td><td>${jour(U.cree)}</td></tr>
+        <tr><td class="muted">Adresse e-mail</td><td>${adresseConfirmee()
+          ? `<span class="pastille vert">confirmée</span>`
+          : `<span class="pastille or">en attente</span>`}</td></tr>
+        <tr><td class="muted">Ouvrages</td><td>${MODE_CLOUD ? (DROITS.achats||[]).length : U.achats.length}</td></tr>
+      </tbody></table>
+      <div class="rang" style="gap:8px;margin-top:16px">
+        <button class="btn mini" onclick="modaleMdp()">Changer le mot de passe</button>
+        <button class="btn mini fantome" onclick="modaleLicence()">Activer une licence</button>
+        <button class="btn mini fantome" onclick="modaleMdpOublie()">Recevoir un lien de réinitialisation</button>
+      </div>
+    </article>
+
+    <article class="carte">
+      <p class="eyebrow" style="margin-bottom:16px">En chiffres</p>
+      <div class="grille g4" style="gap:12px">
+        <div><div class="stat-nb grad-txt">${g}%</div><span class="tiny muted">programme</span></div>
+        <div><div class="stat-nb grad-txt">${U.lu.length}</div><span class="tiny muted">fiches lues</span></div>
+        <div><div class="stat-nb grad-txt">${(U.quiz||[]).length}</div><span class="tiny muted">quiz passés</span></div>
+        <div><div class="stat-nb grad-txt">${(U.flash||[]).reduce((s,x)=>s+x.total,0)}</div><span class="tiny muted">cartes révisées</span></div>
+        <div><div class="stat-nb grad-txt">${(U.quiz||[]).length ? (U.quiz.reduce((s,q)=>s+q.note,0)/U.quiz.length).toFixed(1) : "—"}</div><span class="tiny muted">note moyenne</span></div>
+      </div>
+      <div style="margin-top:22px">
+        ${DB.matieres.map(m => { const p = progressionMatiere(m.id); return `
+          <div style="margin-bottom:14px">
+            <div class="entre" style="margin-bottom:6px"><span class="small">${esc(m.nom)}</span><span class="small muted">${p.pct}%</span></div>
+            <div class="barre"><span style="width:${p.pct}%"></span></div>
+          </div>`; }).join("")}
+      </div>
+    </article>
+  </div>`;
+}
+
+function modaleMdp(){
+  modale(`<h2 style="margin-bottom:16px">Changer le mot de passe</h2>
+    <form onsubmit="changerMdp(event)">
+      <div class="champ"><label for="m-a">Mot de passe actuel</label><input id="m-a" type="password" required></div>
+      <div class="champ"><label for="m-n">Nouveau mot de passe</label><input id="m-n" type="password" minlength="6" required></div>
+      <button class="btn primaire large" type="submit">Enregistrer</button>
+      <button class="btn fantome" type="button" style="width:100%;margin-top:8px" onclick="fermerModale()">Annuler</button>
+    </form>`);
+}
+async function changerMdp(e){
+  e.preventDefault();
+  const actuel = $("#m-a").value, nouveau = $("#m-n").value;
+  if(!MODE_CLOUD){
+    if(U.mdp !== hachage(actuel)) return toast("Mot de passe actuel incorrect.","ko");
+    U.mdp = hachage(nouveau); sauver(); fermerModale(); return toast("Mot de passe modifié.","ok");
+  }
+  try{
+    const cred = firebase.auth.EmailAuthProvider.credential(U.email, actuel);
+    await fauth.currentUser.reauthenticateWithCredential(cred);
+    await fauth.currentUser.updatePassword(nouveau);
+    fermerModale(); toast("Mot de passe modifié.","ok");
+  }catch(err){ toast(traduireErreur(err),"ko"); }
+}
+
+/* =====================================================================
+   11. CONSOLE DÉVELOPPEUR
+   ===================================================================== */
+let ongletDev = "questions";
+let filtreDev = "all";
+let rechercheDev = "";
+
+function vueDev(){
+  if(!U.dev) return `<div class="vide"><h3>Accès réservé</h3><p class="small">Cette console est réservée aux comptes développeur.</p></div>`;
+  const onglets = [["questions","Questions"],["fiches","Fiches"],["livres","Livres"],["matieres","Matières"],["users","Utilisateurs"],["licences","Licences"],["donnees","Données"]];
+  return `
+  <header class="tete">
+    <p class="eyebrow">Console développeur</p>
+    <h1>Gérer le contenu</h1>
+    <p class="muted">Tout ce que tu modifies ici est immédiatement visible côté élève.</p>
+  </header>
+  <div class="matiere-onglets">
+    ${onglets.map(([k,n]) => `<button class="chip ${ongletDev===k?"actif":""}" onclick="ongletDev=${jsArg(k)};rechercheDev='';App.aller('dev')">${n}</button>`).join("")}
+  </div>
+  ${({questions:devQuestions, fiches:devFiches, livres:devLivres, matieres:devMatieres, users:devUsers, licences:devLicences, donnees:devDonnees}[ongletDev])()}`;
+}
+
+/* ---------- questions ---------- */
+function questionsFiltrees(){
+  const q = norm(rechercheDev.trim());
+  return DB.questions
+    .filter(x => filtreDev === "all" || x.m === filtreDev)
+    .filter(x => !q || norm(sansBalises([x.q, x.ch, x.e, x.o.join(" ")].join(" "))).includes(q));
+}
+function corpsQuestions(){
+  const liste = questionsFiltrees(), q = norm(rechercheDev.trim());
+  if(!liste.length) return `<tr><td colspan="5" class="muted" style="text-align:center;padding:26px">Aucune question ne correspond.</td></tr>`;
+  return liste.map(x => `<tr>
+      <td style="max-width:340px">${surligner(x.q, q)}</td>
+      <td><span class="pastille">${esc(nomMat(x.m))}</span></td>
+      <td class="muted">${esc(x.ch||"—")}</td>
+      <td style="color:var(--vert)">${esc(x.o[x.r])}</td>
+      <td style="white-space:nowrap;text-align:right">
+        <button class="btn mini fantome" onclick="editQuestion(${jsArg(x.id)})">Modifier</button>
+        <button class="btn mini fantome" style="color:var(--rouge)" onclick="supprimer('questions',${jsArg(x.id)})">Supprimer</button>
+      </td></tr>`).join("");
+}
+function filtrerDevQuestions(v){
+  rechercheDev = v;
+  const c = document.getElementById("corps-questions");
+  if(c) c.innerHTML = corpsQuestions();
+  const n = document.getElementById("nb-questions");
+  if(n) n.textContent = questionsFiltrees().length + " question(s)";
+}
+
+function devQuestions(){
+  const liste = questionsFiltrees();
+  return `
+  <div class="entre" style="margin-bottom:16px">
+    <div class="rang" style="gap:8px">
+      <select style="width:auto" onchange="filtreDev=this.value;App.aller('dev')">
+        <option value="all">Toutes les matières</option>
+        ${DB.matieres.map(m=>`<option value="${m.id}" ${filtreDev===m.id?"selected":""}>${esc(m.nom)}</option>`).join("")}
+      </select>
+      <span class="small muted" id="nb-questions">${liste.length} question${liste.length>1?"s":""}</span>
+    </div>
+    <button class="btn primaire mini" onclick="editQuestion()">+ Nouvelle question</button>
+  </div>
+  ${champRecherche("q-dev-questions", "Chercher dans les énoncés, les réponses, les explications…", "filtrerDevQuestions")}
+  <div class="carte" style="padding:6px 8px"><div class="tbl-scroll"><table>
+    <thead><tr><th>Question</th><th>Matière</th><th>Chapitre</th><th>Bonne réponse</th><th></th></tr></thead>
+    <tbody id="corps-questions">${corpsQuestions()}</tbody>
+  </table></div></div>`;
+}
+
+function editQuestion(id){
+  const q = id ? DB.questions.find(x => x.id === id) : { id:"", m:DB.matieres[0].id, ch:"", q:"", o:["","","",""], r:0, e:"" };
+  modale(`
+    <p class="eyebrow">${id?"Modifier":"Nouvelle"} question</p>
+    <h2 style="margin:8px 0 18px">${id?"Édition":"Création"}</h2>
+    <form onsubmit="sauverQuestion(event,${jsArg(id||"")})">
+      <div class="rang" style="gap:12px">
+        <div class="champ" style="flex:1"><label>Matière</label>
+          <select id="q-m">${DB.matieres.map(m=>`<option value="${m.id}" ${q.m===m.id?"selected":""}>${esc(m.nom)}</option>`).join("")}</select></div>
+        <div class="champ" style="flex:1"><label>Chapitre</label><input id="q-ch" value="${esc(q.ch||"")}" placeholder="Locomoteur"></div>
+      </div>
+      <div class="champ"><label>Énoncé</label><textarea id="q-q" required style="min-height:70px">${esc(q.q)}</textarea></div>
+      ${[0,1,2,3].map(i => `<div class="champ">
+        <label>Réponse ${["A","B","C","D"][i]} ${i===0?'<span class="tiny">— coche la bonne à droite</span>':''}</label>
+        <div class="rang" style="gap:10px">
+          <input id="q-o${i}" value="${esc(q.o[i]||"")}" ${i<2?"required":""} style="flex:1">
+          <label class="rang tiny" style="gap:5px;margin:0;white-space:nowrap"><input type="radio" name="q-r" value="${i}" ${q.r===i?"checked":""} style="width:auto"> juste</label>
+        </div></div>`).join("")}
+      <div class="champ"><label>Explication du corrigé</label><textarea id="q-e" placeholder="Pourquoi cette réponse est la bonne">${esc(q.e||"")}</textarea></div>
+      <button class="btn primaire large" type="submit">Enregistrer</button>
+      <button class="btn fantome" type="button" style="width:100%;margin-top:8px" onclick="fermerModale()">Annuler</button>
+    </form>`, true);
+}
+
+function sauverQuestion(e, id){
+  e.preventDefault();
+  const o = [0,1,2,3].map(i => $("#q-o"+i).value.trim()).filter(Boolean);
+  const r = parseInt(document.querySelector('input[name="q-r"]:checked').value, 10);
+  if(r >= o.length) return toast("La bonne réponse pointe sur une case vide.","ko");
+  const d = { m:$("#q-m").value, ch:$("#q-ch").value.trim(), q:$("#q-q").value.trim(), o, r, e:$("#q-e").value.trim() };
+  if(id){ Object.assign(DB.questions.find(x => x.id === id), d); }
+  else { DB.questions.push(Object.assign({ id:uid("q") }, d)); }
+  sauverContenu().catch(e=>toast("Publication impossible : "+e.message,"ko")); fermerModale(); toast(id?"Question mise à jour.":"Question ajoutée.","ok"); App.aller("dev");
+}
+
+/* ---------- fiches ---------- */
+function fichesFiltrees(){
+  const q = norm(rechercheDev.trim());
+  return DB.fiches
+    .filter(f => filtreDev === "all" || f.m === filtreDev)
+    .filter(f => !q || texteFiche(f).includes(q));
+}
+function corpsFiches(){
+  const liste = fichesFiltrees(), q = norm(rechercheDev.trim());
+  if(!liste.length) return `<tr><td colspan="6" class="muted" style="text-align:center;padding:26px">Aucune fiche ne correspond.</td></tr>`;
+  return liste.map(f => `<tr>
+      <td><b>${surligner(f.t, q)}</b></td>
+      <td><span class="pastille">${esc(nomMat(f.m))}</span></td>
+      <td class="muted">${esc(f.ch)}</td>
+      <td>${f.prem?'<span class="pastille or">Premium</span>':'<span class="pastille bleu">Libre</span>'}</td>
+      <td class="muted">${f.s.length}${(f.img||[]).length ? " · " + f.img.length + " img" : ""}</td>
+      <td style="white-space:nowrap;text-align:right">
+        <button class="btn mini fantome" onclick="editFiche(${jsArg(f.id)})">Modifier</button>
+        <button class="btn mini fantome" style="color:var(--rouge)" onclick="supprimer('fiches',${jsArg(f.id)})">Supprimer</button>
+      </td></tr>`).join("");
+}
+function filtrerDevFiches(v){
+  rechercheDev = v;
+  const c = document.getElementById("corps-fiches");
+  if(c) c.innerHTML = corpsFiches();
+  const n = document.getElementById("nb-fiches");
+  if(n) n.textContent = fichesFiltrees().length + " fiche(s)";
+}
+
+function devFiches(){
+  const liste = fichesFiltrees();
+  return `
+  <div class="entre" style="margin-bottom:16px">
+    <div class="rang" style="gap:8px">
+      <select style="width:auto" onchange="filtreDev=this.value;App.aller('dev')">
+        <option value="all">Toutes les matières</option>
+        ${DB.matieres.map(m=>`<option value="${m.id}" ${filtreDev===m.id?"selected":""}>${esc(m.nom)}</option>`).join("")}
+      </select>
+      <span class="small muted" id="nb-fiches">${liste.length} fiche${liste.length>1?"s":""}</span>
+    </div>
+    <div class="rang" style="gap:8px">
+      <button class="btn mini" onclick="modaleImportPdf()">Importer un PDF</button>
+      <button class="btn primaire mini" onclick="editFiche()">+ Nouvelle fiche</button>
+    </div>
+  </div>
+  ${champRecherche("q-dev-fiches", "Chercher un titre, un chapitre, un mot du contenu…", "filtrerDevFiches")}
+  <div class="carte" style="padding:6px 8px"><div class="tbl-scroll"><table>
+    <thead><tr><th>Titre</th><th>Matière</th><th>Chapitre</th><th>Accès</th><th>Contenu</th><th></th></tr></thead>
+    <tbody id="corps-fiches">${corpsFiches()}</tbody>
+  </table></div></div>`;
+}
+
+function ficheVersTexte(f){
+  return f.s.map(s => "## " + s.h + "\n" + s.l.map(l => "- " + l).join("\n")).join("\n\n");
+}
+function texteVersFiche(txt){
+  const secs = []; let cour = null;
+  txt.split("\n").forEach(ligne => {
+    const t = ligne.trim();
+    if(!t) return;
+    if(t.startsWith("##")){ cour = { h:t.replace(/^#+\s*/,""), l:[] }; secs.push(cour); }
+    else if(t.startsWith("-")){ if(!cour){ cour = { h:"Points clés", l:[] }; secs.push(cour); } cour.l.push(t.replace(/^-\s*/,"")); }
+    else { if(!cour){ cour = { h:"Points clés", l:[] }; secs.push(cour); } cour.l.push(t); }
+  });
+  return secs;
+}
+
+let ImagesFiche = [];
+
+function rendreGalerieFiche(){
+  const g = document.getElementById("f-galerie");
+  if(!g) return;
+  g.innerHTML = ImagesFiche.length ? ImagesFiche.map((u,i) => `<figure class="vignette">
+      <img src="${sourceImage(u)}" data-med="${esc(u)}" alt="Schéma ${i+1}">
+      <span class="rang-num">${i+1}</span>
+      <div class="actions">
+        <button type="button" title="Reculer" onclick="deplacerImageFiche(${i},-1)" ${i===0?"disabled style=opacity:.35":""}>‹</button>
+        <button type="button" class="sup" title="Retirer" onclick="retirerImageFiche(${i})">✕</button>
+        <button type="button" title="Avancer" onclick="deplacerImageFiche(${i},1)" ${i===ImagesFiche.length-1?"disabled style=opacity:.35":""}>›</button>
+      </div></figure>`).join("")
+    : `<p class="tiny muted" style="grid-column:1/-1">Aucun schéma pour l'instant.</p>`;
+  resoudreImages(ImagesFiche, g);
+}
+
+async function ajouterImagesFiche(input){
+  const fichiers = [...input.files];
+  input.value = "";
+  if(!fichiers.length) return;
+  const etat = document.getElementById("f-etat-img");
+  let n = 0;
+  for(const fichier of fichiers){
+    etat.textContent = `Enregistrement ${++n}/${fichiers.length}…`;
+    try{
+      const petite = await compresserImage(fichier, 1400);
+      ImagesFiche.push(await stockerImage(petite));
+      rendreGalerieFiche();
+    }catch(e){ toast(fichier.name + " : " + e.message, "ko"); }
+  }
+  etat.textContent = fichiers.length + (fichiers.length > 1 ? " schémas ajoutés." : " schéma ajouté.");
+  setTimeout(() => { if(etat) etat.textContent = ""; }, 2600);
+}
+
+function ajouterUrlImage(){
+  const c = document.getElementById("f-url-img");
+  const u = c.value.trim();
+  if(!u) return;
+  ImagesFiche.push(u); c.value = ""; rendreGalerieFiche();
+}
+function retirerImageFiche(i){ ImagesFiche.splice(i,1); rendreGalerieFiche(); }
+function deplacerImageFiche(i, sens){
+  const j = i + sens;
+  if(j < 0 || j >= ImagesFiche.length) return;
+  [ImagesFiche[i], ImagesFiche[j]] = [ImagesFiche[j], ImagesFiche[i]];
+  rendreGalerieFiche();
+}
+
+function editFiche(id){
+  const f = id ? DB.fiches.find(x => x.id === id) : { id:"", m:DB.matieres[0].id, ch:"", t:"", prem:false, s:[], note:"", pdf:"", img:[] };
+  ImagesFiche = (f.img || []).slice();
+  modale(`
+    <p class="eyebrow">${id?"Modifier":"Nouvelle"} fiche</p>
+    <h2 style="margin:8px 0 18px">${id?esc(f.t):"Création"}</h2>
+    <form onsubmit="sauverFiche(event,${jsArg(id||"")})">
+      <div class="rang" style="gap:12px">
+        <div class="champ" style="flex:1"><label>Matière</label>
+          <select id="f-m">${DB.matieres.map(m=>`<option value="${m.id}" ${f.m===m.id?"selected":""}>${esc(m.nom)}</option>`).join("")}</select></div>
+        <div class="champ" style="flex:1"><label>Chapitre</label><input id="f-ch" value="${esc(f.ch)}" required placeholder="Système nerveux"></div>
+      </div>
+      <div class="champ"><label>Titre de la fiche</label><input id="f-t" value="${esc(f.t)}" required></div>
+      <div class="champ"><label>Contenu — <span class="tiny">« ## » pour un titre de section, « - » pour un point. Le HTML simple (&lt;b&gt;, &lt;i&gt;) est accepté.</span></label>
+        <textarea id="f-s" style="min-height:230px;font-family:var(--mono);font-size:13px">${esc(ficheVersTexte(f))}</textarea></div>
+      <div class="champ"><label>Encadré « À retenir » (facultatif)</label><textarea id="f-note" style="min-height:60px">${esc(f.note||"")}</textarea></div>
+
+      <div class="champ"><label>Document PDF de la fiche (facultatif)</label>
+        <input id="f-pdf" value="${esc(f.pdf||"")}" placeholder="https://… ou fiches/anatomie-crane.pdf">
+        <p class="tiny muted" style="margin-top:7px;line-height:1.55">
+          Dépose le fichier dans le dossier <code style="font-family:var(--mono);color:var(--bleu)">pdf</code>
+          du site, puis écris ici son chemin, par exemple
+          <code style="font-family:var(--mono);color:var(--bleu)">pdf/crane.pdf</code>.
+          Le document s'affiche alors dans la fiche, schémas compris.
+        </p>
+      </div>
+
+      <div class="champ"><label>Schémas de la fiche</label>
+        <label class="zone-depot">
+          <input type="file" accept="image/*" multiple style="display:none" onchange="ajouterImagesFiche(this)">
+          <div style="font-weight:640;font-size:14px">Ajouter des schémas</div>
+          <div class="tiny muted" style="margin-top:4px">Clique pour choisir une ou plusieurs images · PNG, JPG ou WEBP</div>
+        </label>
+        <div id="f-etat-img" class="tiny muted" style="margin-top:8px"></div>
+        <div class="galerie-edit" id="f-galerie"></div>
+        <div class="rang" style="gap:8px;margin-top:10px">
+          <input id="f-url-img" placeholder="ou colle l'adresse d'une image" style="flex:1">
+          <button type="button" class="btn mini" onclick="ajouterUrlImage()">Ajouter</button>
+        </div>
+      </div>
+      <label class="rang small" style="gap:8px;margin-bottom:18px"><input type="checkbox" id="f-prem" ${f.prem?"checked":""} style="width:auto"> Réserver aux abonnés</label>
+      <button class="btn primaire large" type="submit">Enregistrer</button>
+      <button class="btn fantome" type="button" style="width:100%;margin-top:8px" onclick="fermerModale()">Annuler</button>
+    </form>`, true);
+  rendreGalerieFiche();
+}
+function sauverFiche(e, id){
+  e.preventDefault();
+  const d = { m:$("#f-m").value, ch:$("#f-ch").value.trim(), t:$("#f-t").value.trim(),
+              prem:$("#f-prem").checked, s:texteVersFiche($("#f-s").value), note:$("#f-note").value.trim(),
+              pdf:$("#f-pdf").value.trim(),
+              img:ImagesFiche.slice() };
+  if(id){ Object.assign(DB.fiches.find(x => x.id === id), d); }
+  else { DB.fiches.push(Object.assign({ id:uid("f") }, d)); }
+  sauverContenu().catch(e=>toast("Publication impossible : "+e.message,"ko")); fermerModale(); toast(id?"Fiche mise à jour.":"Fiche ajoutée.","ok"); App.aller("dev");
+}
+
+/* ---------- livres ---------- */
+function devLivres(){
+  return `
+  <div class="entre" style="margin-bottom:16px">
+    <span class="small muted">${DB.livres.length} ouvrages en vente</span>
+    <button class="btn primaire mini" onclick="editLivre()">+ Nouveau livre</button>
+  </div>
+  <div class="grille g2">
+    ${DB.livres.map(l => `<article class="carte livre">
+      <div class="couv" style="background:linear-gradient(150deg,${l.c1},${l.c2});height:120px"><h3 style="position:relative;z-index:1;font-size:16px">${esc(l.titre)}</h3></div>
+      <div class="livre-corps">
+        <p class="small muted">${esc(l.desc).slice(0,120)}…</p>
+        <div class="entre"><span class="prix grad-txt" style="font-size:20px">${l.prix} €</span>
+          <div class="rang" style="gap:6px">
+            <button class="btn mini fantome" onclick="editLivre(${jsArg(l.id)})">Modifier</button>
+            <button class="btn mini fantome" style="color:var(--rouge)" onclick="supprimer('livres',${jsArg(l.id)})">Supprimer</button>
+          </div></div>
+      </div></article>`).join("")}
+  </div>
+  <div class="carte" style="margin-top:20px">
+    <p class="eyebrow" style="margin-bottom:14px">Ventes enregistrées</p>
+    ${DB.ventes.length ? `<div class="tbl-scroll"><table>
+      <thead><tr><th>Date</th><th>Client</th><th>Article</th><th>Montant</th></tr></thead>
+      <tbody>${DB.ventes.slice(0,15).map(v => `<tr><td class="muted">${jour(v.date)}</td><td>${esc(v.user)}</td>
+        <td>${v.type==="abo" ? "Abonnement "+esc(v.ref) : esc((DB.livres.find(l=>l.id===v.ref)||{titre:v.ref}).titre)}</td>
+        <td><b>${v.prix} €</b></td></tr>`).join("")}</tbody></table></div>
+      <p class="small muted" style="margin-top:12px">Chiffre d'affaires cumulé : <b style="color:var(--texte)">${DB.ventes.reduce((s,v)=>s+v.prix,0)} €</b></p>`
+    : `<p class="small muted">Aucune vente pour l'instant.</p>`}
+  </div>`;
+}
+function editLivre(id){
+  const l = id ? DB.livres.find(x => x.id === id) : { id:"", titre:"", soustitre:"", prix:10, pages:60, m:DB.matieres[0].id, c1:"#8B5CF6", c2:"#EC4899", desc:"", sommaire:[] };
+  modale(`
+    <p class="eyebrow">${id?"Modifier":"Nouveau"} livre</p>
+    <h2 style="margin:8px 0 18px">${id?esc(l.titre):"Création"}</h2>
+    <form onsubmit="sauverLivre(event,${jsArg(id||"")})">
+      <div class="champ"><label>Titre</label><input id="l-t" value="${esc(l.titre)}" required></div>
+      <div class="champ"><label>Sous-titre</label><input id="l-st" value="${esc(l.soustitre||"")}"></div>
+      <div class="rang" style="gap:12px">
+        <div class="champ" style="flex:1"><label>Prix (€)</label><input id="l-p" type="number" min="0" step="1" value="${l.prix}" required></div>
+        <div class="champ" style="flex:1"><label>Pages</label><input id="l-pg" type="number" min="1" value="${l.pages}"></div>
+        <div class="champ" style="flex:1"><label>Matière source</label>
+          <select id="l-m"><option value="all" ${l.m==="all"?"selected":""}>Toutes</option>
+            ${DB.matieres.map(m=>`<option value="${m.id}" ${l.m===m.id?"selected":""}>${esc(m.nom)}</option>`).join("")}</select></div>
+      </div>
+      <div class="rang" style="gap:12px">
+        <div class="champ" style="flex:1"><label>Couleur 1</label><input id="l-c1" type="text" value="${l.c1}"></div>
+        <div class="champ" style="flex:1"><label>Couleur 2</label><input id="l-c2" type="text" value="${l.c2}"></div>
+      </div>
+      <div class="champ"><label>Fichier PDF de l'ouvrage (facultatif)</label>
+        <input id="l-pdf" value="${esc(l.pdf||"")}" placeholder="laisse vide pour générer le PDF depuis les fiches">
+        <p class="tiny muted" style="margin-top:7px;line-height:1.55">
+          Chemin du fichier déposé dans le dossier <code style="font-family:var(--mono);color:var(--bleu)">pdf</code>
+          du site, par exemple <code style="font-family:var(--mono);color:var(--bleu)">pdf/anatomie-2025.pdf</code>.
+          C'est ce document que l'acheteur recevra.
+        </p>
+      </div>
+      <div class="champ"><label>Description</label><textarea id="l-d">${esc(l.desc)}</textarea></div>
+      <div class="champ"><label>Sommaire — une ligne par entrée</label><textarea id="l-s" style="min-height:100px">${esc((l.sommaire||[]).join("\n"))}</textarea></div>
+      <button class="btn primaire large" type="submit">Enregistrer</button>
+      <button class="btn fantome" type="button" style="width:100%;margin-top:8px" onclick="fermerModale()">Annuler</button>
+    </form>`, true);
+}
+function sauverLivre(e, id){
+  e.preventDefault();
+  const d = { titre:$("#l-t").value.trim(), soustitre:$("#l-st").value.trim(), prix:+$("#l-p").value, pages:+$("#l-pg").value,
+              m:$("#l-m").value, c1:$("#l-c1").value.trim(), c2:$("#l-c2").value.trim(), desc:$("#l-d").value.trim(),
+              pdf:$("#l-pdf").value.trim(),
+              sommaire:$("#l-s").value.split("\n").map(s=>s.trim()).filter(Boolean) };
+  if(id){ Object.assign(DB.livres.find(x => x.id === id), d); }
+  else { DB.livres.push(Object.assign({ id:uid("liv") }, d)); }
+  sauverContenu().catch(e=>toast("Publication impossible : "+e.message,"ko")); fermerModale(); toast(id?"Livre mis à jour.":"Livre ajouté.","ok"); App.aller("dev");
+}
+
+/* ---------- matières ---------- */
+function devMatieres(){
+  return `
+  <div class="entre" style="margin-bottom:16px">
+    <span class="small muted">${DB.matieres.length} matières</span>
+    <button class="btn primaire mini" onclick="editMatiere()">+ Nouvelle matière</button>
+  </div>
+  <div class="grille g3">
+    ${DB.matieres.map(m => {
+      const nf = DB.fiches.filter(f=>f.m===m.id).length, nq = DB.questions.filter(q=>q.m===m.id).length;
+      return `<article class="carte">
+        <div style="height:6px;border-radius:99px;background:linear-gradient(90deg,${m.c1},${m.c2});margin-bottom:14px"></div>
+        <h3>${esc(m.nom)}</h3>
+        <p class="small muted" style="margin:6px 0 12px">${esc(m.desc||"")}</p>
+        <p class="tiny muted">${nf} fiches · ${nq} questions</p>
+        <div class="rang" style="gap:6px;margin-top:12px">
+          <button class="btn mini fantome" onclick="editMatiere(${jsArg(m.id)})">Modifier</button>
+          <button class="btn mini fantome" style="color:var(--rouge)" onclick="supprimer('matieres',${jsArg(m.id)})">Supprimer</button>
+        </div></article>`;
+    }).join("")}
+  </div>`;
+}
+function editMatiere(id){
+  const m = id ? DB.matieres.find(x => x.id === id) : { id:"", nom:"", desc:"", c1:"#8B5CF6", c2:"#38BDF8" };
+  modale(`<p class="eyebrow">${id?"Modifier":"Nouvelle"} matière</p>
+    <h2 style="margin:8px 0 18px">${id?esc(m.nom):"Création"}</h2>
+    <form onsubmit="sauverMatiere(event,${jsArg(id||"")})">
+      <div class="champ"><label>Nom</label><input id="mt-n" value="${esc(m.nom)}" required></div>
+      <div class="champ"><label>Description courte</label><input id="mt-d" value="${esc(m.desc||"")}"></div>
+      <div class="rang" style="gap:12px">
+        <div class="champ" style="flex:1"><label>Couleur 1</label><input id="mt-c1" value="${m.c1}"></div>
+        <div class="champ" style="flex:1"><label>Couleur 2</label><input id="mt-c2" value="${m.c2}"></div>
+      </div>
+      <button class="btn primaire large" type="submit">Enregistrer</button>
+      <button class="btn fantome" type="button" style="width:100%;margin-top:8px" onclick="fermerModale()">Annuler</button>
+    </form>`);
+}
+function sauverMatiere(e, id){
+  e.preventDefault();
+  const d = { nom:$("#mt-n").value.trim(), desc:$("#mt-d").value.trim(), c1:$("#mt-c1").value.trim(), c2:$("#mt-c2").value.trim() };
+  if(id){ Object.assign(DB.matieres.find(x => x.id === id), d); }
+  else { DB.matieres.push(Object.assign({ id:uid("m") }, d)); }
+  sauverContenu().catch(e=>toast("Publication impossible : "+e.message,"ko")); fermerModale(); toast("Matière enregistrée.","ok"); App.aller("dev");
+}
+
+/* ---------- utilisateurs ---------- */
+function devUsers(){
+  return `
+  <div class="grille g4" style="margin-bottom:18px">
+    <div class="carte"><div class="stat-nb grad-txt">${DB.users.length}</div><span class="tiny muted">comptes</span></div>
+    <div class="carte"><div class="stat-nb grad-txt">${DB.users.filter(u=>aboActif(u)).length}</div><span class="tiny muted">abonnés actifs</span></div>
+    <div class="carte"><div class="stat-nb grad-txt">${DB.ventes.reduce((s,v)=>s+v.prix,0)} €</div><span class="tiny muted">encaissé</span></div>
+    <div class="carte"><div class="stat-nb grad-txt">${DB.users.reduce((s,u)=>s+(u.quiz||[]).length,0)}</div><span class="tiny muted">quiz passés</span></div>
+  </div>
+  <div class="entre" style="margin-bottom:12px">
+    <span class="small muted">${MODE_CLOUD ? "Comptes lus depuis Firestore" : "Comptes stockés dans ce navigateur"}</span>
+    ${MODE_CLOUD ? `<button class="btn mini" onclick="chargerUtilisateurs().then(()=>App.aller('dev'))">Rafraîchir la liste</button>` : ""}
+  </div>
+  <div class="carte" style="padding:6px 8px"><div class="tbl-scroll"><table>
+    <thead><tr><th>Utilisateur</th><th>Formule</th><th>Fiches</th><th>Quiz</th><th>Achats</th><th></th></tr></thead>
+    <tbody>${DB.users.map(u => `<tr>
+      <td><b>${esc(u.nom)}</b><br><span class="tiny muted">${esc(u.email)}</span></td>
+      <td>${u.dev?'<span class="pastille rose">développeur</span>':aboActif(u)?`<span class="pastille vert">${esc(u.abo.plan)}</span>`:'<span class="pastille">gratuit</span>'}</td>
+      <td>${u.lu.length}</td><td>${(u.quiz||[]).length}</td><td>${u.achats.length}</td>
+      <td style="white-space:nowrap;text-align:right">
+        <button class="btn mini fantome" onclick="offrirAbo(${jsArg(u.id)})">Offrir 1 mois</button>
+        <button class="btn mini fantome" onclick="basculerDev(${jsArg(u.id)})">${u.dev?"Retirer dev":"Passer dev"}</button>
+        ${u.id===U.id?"":`<button class="btn mini fantome" style="color:var(--rouge)" onclick="supprimerUser(${jsArg(u.id)})">Supprimer</button>`}
+      </td></tr>`).join("")}</tbody>
+  </table></div></div>`;
+}
+function offrirAbo(id){
+  const u = DB.users.find(x => x.id === id);
+  const base = aboActif(u) ? u.abo.fin : Date.now();
+  u.abo = { plan:"mensuel", debut:Date.now(), fin:base + 30*86400000, licence:codeLicence() };
+  sauverUser(u); if(u.id === U.id) U.abo = u.abo;
+  toast("Un mois offert à " + u.nom + ".","ok"); App.aller("dev");
+}
+function basculerDev(id){
+  const u = DB.users.find(x => x.id === id);
+  u.dev = !u.dev; sauverUser(u); if(u.id === U.id) U.dev = u.dev;
+  if(u.id === U.id){ $("#nav-dev").style.display = u.dev?"":"none"; $("#titre-dev").style.display = u.dev?"":"none"; }
+  toast(u.nom + (u.dev ? " est développeur." : " repasse en compte élève.")); App.aller(u.dev||u.id!==U.id?"dev":"fiches");
+}
+function supprimerUser(id){
+  const u = DB.users.find(x => x.id === id);
+  modale(`<h2 style="margin-bottom:8px">Supprimer ${esc(u.nom)} ?</h2>
+    <p class="small muted" style="margin-bottom:20px">Le compte, sa progression et ses achats seront effacés définitivement.</p>
+    <div class="rang" style="gap:10px"><button class="btn danger" style="flex:1" onclick="confirmerSuppUser(${jsArg(id)})">Supprimer</button>
+    <button class="btn fantome" onclick="fermerModale()">Annuler</button></div>`);
+}
+function confirmerSuppUser(id){
+  DB.users = DB.users.filter(u => u.id !== id);
+  if(MODE_CLOUD) fdb.collection("users").doc(id).delete().catch(()=>{});
+  else Store.ecrire(DB);
+  fermerModale(); toast("Compte supprimé côté application."); App.aller("dev");
+}
+
+/* ---------- licences ---------- */
+function devLicences(){
+  return `
+  <div class="entre" style="margin-bottom:16px">
+    <span class="small muted">${DB.licences.length} licences générées · ${DB.licences.filter(l=>!l.utilisee).length} disponibles</span>
+    <div class="rang" style="gap:8px">
+      <button class="btn mini" onclick="genererLicences('mensuel',5)">+ 5 mensuelles</button>
+      <button class="btn primaire mini" onclick="genererLicences('annuel',5)">+ 5 annuelles</button>
+    </div>
+  </div>
+  ${DB.licences.length ? `<div class="carte" style="padding:6px 8px"><div class="tbl-scroll"><table>
+    <thead><tr><th>Code</th><th>Durée</th><th>Statut</th><th>Utilisée par</th><th></th></tr></thead>
+    <tbody>${DB.licences.slice().reverse().map(l => `<tr>
+      <td style="font-family:var(--mono);font-size:12.5px">${esc(l.code)}</td>
+      <td>${l.type === "annuel" ? "12 mois" : "1 mois"}</td>
+      <td>${l.utilisee?'<span class="pastille">consommée</span>':'<span class="pastille vert">disponible</span>'}</td>
+      <td class="muted">${esc(l.par||"—")}</td>
+      <td style="text-align:right"><button class="btn mini fantome" onclick="copier(${jsArg(esc(l.code))})">Copier</button>
+      <button class="btn mini fantome" style="color:var(--rouge)" onclick="supprimerLicence(${jsArg(esc(l.code))})">Supprimer</button></td>
+    </tr>`).join("")}</tbody></table></div></div>`
+  : `<div class="vide"><h3>Aucune licence générée</h3><p class="small">Génère des codes à distribuer à une classe ou à joindre à une commande.</p></div>`}`;
+}
+function genererLicences(type, n){
+  for(let i=0;i<n;i++) DB.licences.push({ code:codeLicence(), type, utilisee:false, cree:Date.now() });
+  sauverListes(); toast(n + " licences " + type + "s générées.","ok"); App.aller("dev");
+}
+function supprimerLicence(code){
+  DB.licences = DB.licences.filter(l => l.code !== code); sauverListes(); App.aller("dev");
+}
+function copier(txt){
+  navigator.clipboard ? navigator.clipboard.writeText(txt).then(()=>toast("Code copié.")) : toast(txt);
+}
+
+/* ---------- données ---------- */
+function devDonnees(){
+  return `
+  <div class="grille g2">
+    <article class="carte">
+      <h3>Exporter</h3>
+      <p class="small muted" style="margin:8px 0 16px">Télécharge l'intégralité du contenu et des comptes dans un fichier JSON, pour sauvegarde ou transfert vers un serveur.</p>
+      <button class="btn primaire" onclick="exporter()">Exporter le JSON</button>
+    </article>
+    <article class="carte">
+      <h3>Importer</h3>
+      <p class="small muted" style="margin:8px 0 16px">Remplace la base actuelle par un fichier exporté auparavant.</p>
+      <input type="file" accept="application/json" id="fichier-import" onchange="importer(event)" style="padding:9px">
+    </article>
+    <article class="carte" style="border-color:rgba(251,113,133,.35)">
+      <h3 style="color:var(--rouge)">Tout réinitialiser</h3>
+      <p class="small muted" style="margin:8px 0 16px">Efface la base complète, y compris les comptes et l'historique des ventes.</p>
+      <button class="btn danger" onclick="reinitialiser()">Réinitialiser la base</button>
+    </article>
+  </div>
+  <div class="carte" style="margin-top:18px">
+    <p class="eyebrow" style="margin-bottom:12px">État de la base</p>
+    <div class="grille g4">
+      <div><div class="stat-nb grad-txt">${DB.fiches.length}</div><span class="tiny muted">fiches</span></div>
+      <div><div class="stat-nb grad-txt">${DB.questions.length}</div><span class="tiny muted">questions</span></div>
+      <div><div class="stat-nb grad-txt">${DB.livres.length}</div><span class="tiny muted">livres</span></div>
+      <div><div class="stat-nb grad-txt">${DB.users.length}</div><span class="tiny muted">comptes</span></div>
+    </div>
+  </div>`;
+}
+function exporter(){
+  const b = new Blob([JSON.stringify(DB,null,2)], {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(b);
+  a.download = "studywithaaly-sauvegarde-" + new Date().toISOString().slice(0,10) + ".json";
+  a.click(); URL.revokeObjectURL(a.href);
+  toast("Sauvegarde téléchargée.","ok");
+}
+function importer(e){
+  const f = e.target.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try{
+      const d = JSON.parse(r.result);
+      if(!d.fiches || !d.questions) throw 0;
+      Object.assign(DB,SWA_SECURITY.content(d));
+      if(MODE_CLOUD){ sauverContenu().catch(e=>toast("Publication impossible : "+e.message,"ko")); sauverListes(); } else Store.ecrire(DB);
+      const u = DB.users.find(x => x.email === DB.sessionEmail) || DB.users[0];
+      toast("Base importée.","ok"); ouvrirSession(u);
+    }catch(err){ toast("Fichier illisible ou incompatible.","ko"); }
+  };
+  r.readAsText(f);
+}
+function restaurerContenu(){
+  DB.matieres  = JSON.parse(JSON.stringify(CONTENU_INITIAL.matieres));
+  DB.fiches    = JSON.parse(JSON.stringify(CONTENU_INITIAL.fiches));
+  DB.questions = JSON.parse(JSON.stringify(CONTENU_INITIAL.questions));
+  DB.livres    = JSON.parse(JSON.stringify(CONTENU_INITIAL.livres));
+  sauverContenu().catch(e=>toast("Publication impossible : "+e.message,"ko")); toast("Contenu d'origine restauré.","ok"); App.aller("dev");
+}
+function reinitialiser(){
+  modale(`<h2 style="margin-bottom:8px">Réinitialiser toute la base ?</h2>
+    <p class="small muted" style="margin-bottom:20px">Comptes, progression, ventes et modifications de contenu seront perdus.</p>
+    <div class="rang" style="gap:10px"><button class="btn danger" style="flex:1" onclick="confirmerReinit()">Tout effacer</button>
+    <button class="btn fantome" onclick="fermerModale()">Annuler</button></div>`);
+}
+function confirmerReinit(){
+  try{ localStorage.removeItem(CLE); }catch(e){ delete Memoire[CLE]; }
+  if(MODE_CLOUD){
+    DB.licences = []; DB.ventes = [];
+    restaurerContenu(); sauverListes(); fermerModale();
+    return toast("Contenu remis à zéro. Les comptes se suppriment depuis la console Firebase.","ok");
+  }
+  location.reload();
+}
+
+function supprimer(collection, id){
+  const nom = { questions:"cette question", fiches:"cette fiche", livres:"ce livre", matieres:"cette matière" }[collection];
+  modale(`<h2 style="margin-bottom:8px">Supprimer ${nom} ?</h2>
+    <p class="small muted" style="margin-bottom:20px">L'action est définitive.</p>
+    <div class="rang" style="gap:10px"><button class="btn danger" style="flex:1" onclick="confirmerSuppression(${jsArg(collection)},${jsArg(id)})">Supprimer</button>
+    <button class="btn fantome" onclick="fermerModale()">Annuler</button></div>`);
+}
+function confirmerSuppression(collection, id){
+  DB[collection] = DB[collection].filter(x => x.id !== id);
+  sauverContenu().catch(e=>toast("Publication impossible : "+e.message,"ko")); fermerModale(); toast("Élément supprimé."); App.aller("dev");
+}
+
+/* =====================================================================
+   12. DÉMARRAGE
+   ===================================================================== */
+(async function demarrer(){
+  try{ await initDB(); }
+  catch(e){ toast("Base distante injoignable : " + e.message, "ko"); DB = DB || baseVide(); }
+
+  const an = document.getElementById("annee");
+  if(an) an.textContent = new Date().getFullYear();
+  document.getElementById("vit-fiches").textContent = DB.fiches.length || "—";
+  document.getElementById("vit-questions").textContent = DB.questions.length || "—";
+
+  const retour = new URLSearchParams(location.search).get("paiement");
+  if(retour){
+    history.replaceState({}, "", location.pathname);
+    setTimeout(() => {
+      if(retour === "ok") toast("Paiement confirmé. L'accès s'ouvre dans quelques secondes.","ok");
+      else toast("Paiement annulé, rien n'a été débité.");
+    }, 900);
+    if(retour === "ok"){
+      // le webhook Stripe met une seconde ou deux à écrire les droits
+      [2500, 6000, 11000].forEach(d => setTimeout(async () => {
+        if(!U) return;
+        await chargerDroits();
+        await chargerContenu();
+        $("#mini-plan").textContent = libellePlan(U);
+        if(["boutique","bibliotheque","profil"].includes(VUE)) App.aller(VUE);
+      }, d));
+    }
+  }
+
+  if(MODE_CLOUD){
+    document.getElementById("astuce-dev").innerHTML =
+      "Comptes hébergés sur Firebase. Les accès développeur sont attribués par un responsable du site.";
+    fauth.onAuthStateChanged(async user => {
+      if(!user || U) return;
+      try{
+        const d = await fdb.collection("users").doc(user.uid).get();
+        if(d.exists) ouvrirSession(SWA_SECURITY.profile(d.data(),d.id));
+      }catch(e){}
+    });
+  } else {
+    const reprise = DB.sessionEmail ? DB.users.find(u => u.email === DB.sessionEmail) : null;
+    if(reprise) ouvrirSession(reprise);
+  }
+})();
+
+/* =====================================================================
+   13. IMPORT DE PDF — lecture, découpage en fiches, récupération des schémas
+   ===================================================================== */
+const PDFJS_LIB = "/security/vendor/pdf.mjs";
+const PDFJS_WRK = "/security/vendor/pdf.worker.mjs";
+let ImportEnCours = null;
+
+function chargerScript(src, delai){
+  return new Promise((ok, ko) => {
+    const s = document.createElement("script");
+    const minuteur = setTimeout(() => ko(new Error("bibliothèque PDF injoignable après " + (delai/1000) + " s")), delai || 20000);
+    s.src = src;
+    s.onload = () => { clearTimeout(minuteur); ok(); };
+    s.onerror = () => { clearTimeout(minuteur); ko(new Error("bibliothèque PDF injoignable, vérifie ta connexion")); };
+    document.head.appendChild(s);
+  });
+}
+const PDF_OPTIONS={isEvalSupported:false,wasmUrl:"/security/vendor/wasm/",standardFontDataUrl:"/security/vendor/standard_fonts/",cMapUrl:"/security/vendor/cmaps/",cMapPacked:true};
+let pdfModulePromise;
+async function pdfjs(){
+  pdfModulePromise=pdfModulePromise||import('/security/vendor/pdf.mjs');
+  const lib=await pdfModulePromise;lib.GlobalWorkerOptions.workerSrc='/security/vendor/pdf.worker.mjs';window.pdfjsLib=lib;return lib;
+}
+
+const patienter = () => new Promise(r => setTimeout(r, 0));   // laisse l'écran se rafraîchir
+function avecDelai(promesse, ms, quoi){
+  return Promise.race([
+    promesse,
+    new Promise((_, ko) => setTimeout(() => ko(new Error(quoi + " : aucune réponse après " + (ms/1000) + " s")), ms))
+  ]);
+}
+
+/* ---------- rendu d'une page en image ---------- */
+async function rendrePage(page, largeur){
+  let l = largeur, qualite = 0.72, sortie = null;
+  for(let essai = 0; essai < 5; essai++){
+    const vp0 = page.getViewport({ scale:1 });
+    const vp  = page.getViewport({ scale: Math.min(l / vp0.width, 2.2) });
+    const c = document.createElement("canvas");
+    c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+    await page.render({ canvasContext:ctx, viewport:vp }).promise;
+    sortie = c.toDataURL("image/jpeg", qualite);
+    // un document Firestore ne peut pas dépasser 1 Mo : on réduit jusqu'à passer
+    if(sortie.length < 850000) break;
+    l = Math.round(l * 0.78); qualite = Math.max(0.55, qualite - 0.06);
+  }
+  return sortie;
+}
+
+/* ---------- lecture du document ---------- */
+async function ouvrirDocument(donnees){
+  try{
+    const lib = await pdfjs(false);
+    return { lib, doc: await avecDelai(lib.getDocument({...PDF_OPTIONS,data:donnees.slice(0)}).promise, 25000, "ouverture du PDF") };
+  }catch(e){
+    console.warn("worker PDF indisponible, repli sur le fil principal :", e.message);
+    const lib = await pdfjs(true);
+    return { lib, doc: await avecDelai(lib.getDocument({...PDF_OPTIONS,data:donnees.slice(0)}).promise, 45000, "ouverture du PDF") };
+  }
+}
+
+async function analyserPdf(fichier, avecImages, progres, debut, fin){
+  const donnees = await fichier.arrayBuffer();
+  const { lib, doc } = await ouvrirDocument(donnees);
+  const premiere = Math.max(1, debut || 1);
+  const derniere = Math.min(doc.numPages, fin || doc.numPages);
+  const pages = [];
+  for(let n = premiere; n <= derniere; n++){
+    if(progres) progres(n - premiere + 1, derniere - premiere + 1, n);
+    await patienter();
+    const page = await doc.getPage(n);
+
+    // découpage récursif en blocs : indispensable sur une mise en page
+    // en encadrés, sinon deux colonnes de même hauteur se retrouvent collées
+    const tc = await page.getTextContent();
+    const vp = page.getViewport({ scale:1 });
+    const lignes = lignesOrdonnees(motsDeLaPage(tc.items, vp.height));
+
+    // la page contient-elle des illustrations ?
+    let illustree = false;
+    try{
+      const ops = await page.getOperatorList();
+      illustree = ops.fnArray.some(f =>
+        f === lib.OPS.paintImageXObject || f === lib.OPS.paintJpegXObject ||
+        f === lib.OPS.paintImageXObjectRepeat || f === lib.OPS.paintInlineImageXObject);
+    }catch(e){}
+
+    pages.push({
+      n, lignes, illustree,
+      image: (illustree && avecImages) ? await rendrePage(page, 1100) : null
+    });
+    page.cleanup();                      // libère la mémoire au fil des pages
+  }
+  return pages;
+}
+
+/* ---------- découpage en fiches ---------- */
+function structurerPdf(pages, mode, titreDefaut){
+  const hauteurs = [].concat(...pages.map(p => p.lignes.map(l => l.h))).sort((a,b) => a - b);
+  const corps = hauteurs[Math.floor(hauteurs.length/2)] || 10;
+  const fiches = [];
+  let f = null, sec = null;
+
+  const ouvrir = (titre, page) => { f = { t:titre, s:[], img:[], pages:[page] }; sec = null; fiches.push(f); };
+  const parasite = t =>
+    /^\d{1,4}$/.test(t) ||                       // numéro de page
+    /^(page|©|@)/i.test(t) ||
+    t.length < 2;
+
+  if(mode === "unique") ouvrir(titreDefaut || "Fiche importée", 1);
+
+  pages.forEach(p => {
+    if(mode === "page") ouvrir((titreDefaut ? titreDefaut + " — " : "") + "page " + p.n, p.n);
+
+    p.lignes.forEach(l => {
+      const t = l.txt.trim();
+      if(parasite(t)) return;
+      const court = t.length <= 72;
+      const grand = l.h >= corps * 1.32;
+      const moyen = l.h >= corps * 1.11;
+
+      if(mode === "titre" && grand && court){ ouvrir(t, p.n); return; }
+      if(!f) ouvrir(court ? t : (titreDefaut || "Fiche importée"), p.n);
+      if(moyen && court){ sec = { h:t, l:[] }; f.s.push(sec); return; }
+      if(!sec){ sec = { h:"Points clés", l:[] }; f.s.push(sec); }
+
+      const puce = /^[•▪◦●○·\-–—]\s+/.test(t);
+      const texte = t.replace(/^[•▪◦●○·\-–—]\s+/, "").trim();
+      const dernier = sec.l[sec.l.length - 1];
+      // une ligne sans puce qui prolonge la précédente est recollée
+      if(!puce && dernier && /[^.:;!?»)]$/.test(dernier) && texte[0] === texte[0].toLowerCase() && dernier.length < 260)
+        sec.l[sec.l.length - 1] = dernier + " " + texte;
+      else sec.l.push(texte);
+    });
+
+    if(p.image){
+      if(!f) ouvrir((titreDefaut ? titreDefaut + " — " : "") + "page " + p.n, p.n);
+      f.img.push(p.image);
+    }
+    if(f && !f.pages.includes(p.n)) f.pages.push(p.n);
+  });
+
+  return fiches
+    .map(x => { x.s = x.s.filter(s => s.l.length); return x; })
+    .filter(x => x.s.length || x.img.length);
+}
+
+/* ---------- stockage des images extraites ---------- */
+function dataUrlVersBlob(d){
+  const [t, b] = d.split(","), mime = t.match(/:(.*?);/)[1], bin = atob(b);
+  const u = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) u[i] = bin.charCodeAt(i);
+  return new Blob([u], { type:mime });
+}
+/* Réduction et compression d'une image avant enregistrement */
+function compresserImage(fichier, maxLargeur){
+  return new Promise((ok, ko) => {
+    const fr = new FileReader();
+    fr.onerror = () => ko(new Error("lecture impossible"));
+    fr.onload = () => {
+      const im = new Image();
+      im.onerror = () => ko(new Error("format d'image non reconnu"));
+      im.onload = () => {
+        let largeur = maxLargeur || 1400, sortie;
+        for(let essai = 0; essai < 4; essai++){
+          const r = Math.min(1, largeur / im.width);
+          const c = document.createElement("canvas");
+          c.width = Math.round(im.width * r); c.height = Math.round(im.height * r);
+          const ctx = c.getContext("2d");
+          ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);   // fond blanc pour les PNG transparents
+          ctx.drawImage(im, 0, 0, c.width, c.height);
+          sortie = c.toDataURL("image/jpeg", 0.78);
+          if(sortie.length < 900000) break;      // limite d'un document Firestore
+          largeur = Math.round(largeur * 0.75);
+        }
+        ok(sortie);
+      };
+      im.src = fr.result;
+    };
+    fr.readAsDataURL(fichier);
+  });
+}
+
+async function stockerImage(dataUrl){
+  if(!MODE_CLOUD) return dataUrl;                       // mode local : conservée telle quelle
+  if(UTILISER_STORAGE && window.firebase && firebase.storage){
+    try{
+      const ref = firebase.storage().ref("schemas/" + Date.now() + "-" + Math.random().toString(36).slice(2,8) + ".jpg");
+      await ref.put(dataUrlVersBlob(dataUrl));
+      return await ref.getDownloadURL();
+    }catch(e){ /* on bascule sur Firestore */ }
+  }
+  const id = uid("med");                                // sinon : document Firestore dédié
+  await fdb.collection("medias").doc(id).set({ data:dataUrl, cree:Date.now() });
+  return "med:" + id;
+}
+
+/* ---------- résolution des images stockées dans Firestore ---------- */
+const MEDIAS = {};
+const PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+function sourceImage(u){ const value=typeof u==='string'&&u.startsWith("med:")?(MEDIAS[u]||PIXEL):u;return esc(SWA_SECURITY.url(value,{image:true})||PIXEL); }
+async function resoudreMedia(u){
+  if(!u.startsWith("med:") || MEDIAS[u]) return MEDIAS[u];
+  if(!MODE_CLOUD) return null;
+  try{
+    if(U && U.dev){const d=await fdb.collection("medias").doc(u.slice(4)).get();if(d.exists)MEDIAS[u]=d.data().data;}
+    else{const result=await appelServeur('site-api',{action:'media',ids:[u]});if(result.medias[u])MEDIAS[u]=result.medias[u];}
+  }catch(e){}
+  return MEDIAS[u];
+}
+async function resoudreImages(liste, racine){
+  for(const u of (liste || [])){
+    if(!u.startsWith("med:")) continue;
+    const src = await resoudreMedia(u);
+    if(!src) continue;
+    (racine || document).querySelectorAll(`img[data-med="${u}"]`).forEach(i => { i.src = SWA_SECURITY.url(src,{image:true})||PIXEL; });
+  }
+}
+
+/* ---------- interface d'import ---------- */
+function modaleImportPdf(){
+  modale(`
+    <p class="eyebrow">Import</p>
+    <h2 style="margin:8px 0 10px">Créer des fiches depuis un PDF</h2>
+    <p class="small muted" style="margin-bottom:20px">Le texte est extrait et remis en forme, les pages contenant des schémas sont récupérées en image. Tu revois tout avant validation.</p>
+    <form onsubmit="lancerImportPdf(event)">
+      <div class="champ"><label>Fichier PDF</label><input type="file" id="ip-fichier" accept="application/pdf" required style="padding:9px"></div>
+      <div class="rang" style="gap:12px">
+        <div class="champ" style="flex:1"><label>Matière</label>
+          <select id="ip-m">${DB.matieres.map(m=>`<option value="${m.id}">${esc(m.nom)}</option>`).join("")}</select></div>
+        <div class="champ" style="flex:1"><label>Chapitre</label><input id="ip-ch" placeholder="Système nerveux" required></div>
+      </div>
+      <div class="champ"><label>Découpage</label>
+        <select id="ip-mode">
+          <option value="titre">Une fiche par grand titre détecté</option>
+          <option value="page">Une fiche par page</option>
+          <option value="unique">Une seule fiche pour tout le document</option>
+        </select></div>
+      <div class="champ"><label>Titre de base (si aucun titre n'est détecté)</label><input id="ip-titre" placeholder="Anatomie du crâne"></div>
+      <div class="rang" style="gap:12px">
+        <div class="champ" style="flex:1"><label>De la page</label><input id="ip-de" type="number" min="1" value="1"></div>
+        <div class="champ" style="flex:1"><label>À la page</label><input id="ip-a" type="number" min="1" value="20"></div>
+      </div>
+      <p class="tiny muted" style="margin:-6px 0 14px">Traite le document par tranches de vingt pages : c'est plus rapide et ça évite de saturer le navigateur. Laisse « à la page » vide pour tout prendre.</p>
+      <label class="rang small" style="gap:8px;margin-bottom:10px"><input type="checkbox" id="ip-img" checked style="width:auto"> Récupérer les pages illustrées en image</label>
+      <label class="rang small" style="gap:8px;margin-bottom:18px"><input type="checkbox" id="ip-prem" style="width:auto"> Réserver ces fiches aux abonnés</label>
+      <div id="ip-etat" class="small muted" style="margin-bottom:12px"></div>
+      <button class="btn primaire large" type="submit">Analyser le PDF</button>
+      <button class="btn fantome" type="button" style="width:100%;margin-top:8px" onclick="fermerModale()">Annuler</button>
+    </form>`, true);
+}
+
+async function lancerImportPdf(e){
+  e.preventDefault();
+  const fichier = $("#ip-fichier").files[0];
+  if(!fichier) return;
+  const etat = $("#ip-etat");
+  const conf = {
+    m:$("#ip-m").value, ch:$("#ip-ch").value.trim(), mode:$("#ip-mode").value,
+    titre:$("#ip-titre").value.trim(), img:$("#ip-img").checked, prem:$("#ip-prem").checked,
+    de: parseInt($("#ip-de").value, 10) || 1,
+    a:  parseInt($("#ip-a").value, 10) || 0
+  };
+  const bouton = e.target.querySelector('button[type=submit]');
+  if(bouton){ bouton.disabled = true; bouton.textContent = "Lecture en cours…"; }
+  etat.textContent = "Chargement de la bibliothèque PDF…";
+  try{
+    const pages = await analyserPdf(fichier, conf.img,
+      (i, total, page) => { etat.textContent = `Lecture ${i}/${total} (page ${page} du document)…`; },
+      conf.de, conf.a);
+    const fiches = structurerPdf(pages, conf.mode, conf.titre || fichier.name.replace(/\.pdf$/i,""));
+    if(!fiches.length) return toast("Aucun texte exploitable. Ce PDF est peut-être un scan : il faudrait le passer à l'OCR.","ko");
+    ImportEnCours = { conf, fiches, pages: pages.length };
+    fermerModale();
+    apercuImport();
+  }catch(err){
+    console.error("import PDF", err);
+    etat.textContent = "";
+    if(bouton){ bouton.disabled = false; bouton.textContent = "Analyser le PDF"; }
+    toast("Lecture impossible : " + err.message, "ko");
+  }
+}
+
+function apercuImport(){
+  const I = ImportEnCours;
+  modale(`
+    <p class="eyebrow">Aperçu</p>
+    <h2 style="margin:8px 0 6px">${I.fiches.length} fiche${I.fiches.length>1?"s":""} détectée${I.fiches.length>1?"s":""}</h2>
+    <p class="small muted" style="margin-bottom:18px">${I.pages} pages lues. Décoche ce que tu ne veux pas, corrige les titres, puis valide.</p>
+    <div style="max-height:46vh;overflow-y:auto;margin-bottom:18px">
+      ${I.fiches.map((f,i) => `<div class="carte" style="padding:13px;margin-bottom:10px">
+        <div class="rang" style="gap:10px;align-items:flex-start">
+          <input type="checkbox" id="ip-ok-${i}" checked style="width:auto;margin-top:11px">
+          <div style="flex:1;min-width:0">
+            <input id="ip-t-${i}" value="${esc(f.t)}" style="font-weight:640">
+            <p class="tiny muted" style="margin-top:7px">
+              ${f.s.length} section${f.s.length>1?"s":""} ·
+              ${f.s.reduce((s,x)=>s+x.l.length,0)} points ·
+              ${f.img.length} schéma${f.img.length>1?"s":""} ·
+              page${f.pages.length>1?"s":""} ${f.pages[0]}${f.pages.length>1?"–"+f.pages[f.pages.length-1]:""}
+            </p>
+            ${f.img.length ? `<div class="rang" style="gap:6px;margin-top:9px">${f.img.slice(0,4).map(src=>`<img src="${sourceImage(src)}" style="width:52px;height:66px;object-fit:cover;border-radius:6px;background:#fff">`).join("")}</div>` : ""}
+            <details style="margin-top:9px"><summary class="tiny muted" style="cursor:pointer">Voir le texte extrait</summary>
+              <div class="tiny muted" style="margin-top:8px;line-height:1.55;max-height:150px;overflow-y:auto">
+                ${f.s.map(s=>`<b style="color:var(--texte)">${esc(s.h)}</b><br>${s.l.map(x=>"• "+esc(x)).join("<br>")}`).join("<br><br>")}
+              </div></details>
+          </div>
+        </div></div>`).join("")}
+    </div>
+    <div id="ip-progres" class="small muted" style="margin-bottom:12px"></div>
+    <button class="btn primaire large" onclick="validerImport(this)">Créer les fiches</button>
+    <button class="btn fantome" style="width:100%;margin-top:8px" onclick="fermerModale();ImportEnCours=null">Annuler</button>`, true);
+}
+
+async function validerImport(bouton){
+  const I = ImportEnCours;
+  const p = $("#ip-progres");
+  const choisies = I.fiches.map((f,i) => ({ f, i })).filter(x => $("#ip-ok-"+x.i).checked);
+  if(!choisies.length) return toast("Aucune fiche sélectionnée.","ko");
+  if(!U.dev) return toast("Seul un compte développeur peut publier des fiches.","ko");
+
+  if(bouton){ bouton.disabled = true; bouton.textContent = "Enregistrement en cours…"; }
+  const total = choisies.reduce((s,x) => s + x.f.img.length, 0);
+  let fait = 0, echecs = 0;
+  const ajoutees = [];
+
+  try{
+    for(const { f, i } of choisies){
+      const titre = ($("#ip-t-"+i) || {}).value || f.t;
+      const images = [];
+      for(const src of f.img){
+        fait++;
+        p.textContent = `Enregistrement des schémas ${fait}/${total}… (ne ferme pas la page)`;
+        try{ images.push(await stockerImage(src)); }
+        catch(e){ echecs++; console.error("schéma", e); }
+      }
+      ajoutees.push({
+        id:uid("f"), m:I.conf.m, ch:I.conf.ch, t:titre.trim() || f.t,
+        prem:I.conf.prem, s:f.s, note:"", pdf:"", img:images
+      });
+    }
+
+    p.textContent = "Publication du contenu…";
+    DB.fiches.push(...ajoutees);
+    await sauverContenu();
+
+    fermerModale();
+    ImportEnCours = null;
+    toast(ajoutees.length + (ajoutees.length > 1 ? " fiches créées" : " fiche créée")
+      + (echecs ? " · " + echecs + " schéma(s) non enregistré(s)" : "") + ".", echecs ? "ko" : "ok");
+    App.aller("dev");
+
+  }catch(e){
+    DB.fiches = DB.fiches.filter(f => !ajoutees.includes(f));   // on ne laisse rien à moitié fait
+    console.error("import", e);
+    p.textContent = "";
+    if(bouton){ bouton.disabled = false; bouton.textContent = "Créer les fiches"; }
+    toast("Import interrompu : " + e.message, "ko");
+  }
+}
+
+
+/* =====================================================================
+   MODULE - Notes personnelles & extraction quiz/flashcards depuis un PDF
+   Tout se passe dans le navigateur : aucun serveur, aucune cle, aucun cout.
+   Le PDF d'Alycia contient deja un QCM, des vrai/faux et leurs corrections :
+   on les lit, on ne les invente pas.
+   ===================================================================== */
+
+/* ---------------------------------------------------------------------
+   1. NOTES PERSONNELLES
+   Rangees dans U.notes, donc sauvegardees par sauver() dans users/{id}.
+   --------------------------------------------------------------------- */
+
+function mesNotes(){
+  if(!U) return {};
+  if(!U.notes || typeof U.notes !== "object") U.notes = {};
+  return U.notes;
+}
+function maNote(ficheId){ return (mesNotes()[ficheId] || "").trim(); }
+
+let minuteurNote = null;
+
+function saisirNote(ficheId, valeur){
+  mesNotes()[ficheId] = valeur;
+  const etat = $("#note-etat");
+  if(etat) etat.textContent = "Modifications en cours…";
+  clearTimeout(minuteurNote);
+  minuteurNote = setTimeout(() => {
+    if(!valeur.trim()) delete mesNotes()[ficheId];
+    sauver();
+    const e2 = $("#note-etat");
+    if(e2) e2.textContent = valeur.trim() ? "Enregistré" : "Note vide, supprimée";
+  }, 1200);
+}
+
+function effacerNote(ficheId){
+  delete mesNotes()[ficheId];
+  sauver();
+  const z = $("#note-zone");
+  if(z) z.value = "";
+  const e = $("#note-etat");
+  if(e) e.textContent = "Note supprimée";
+  toast("Note supprimée.","ok");
+}
+
+function htmlPanneauNote(f){
+  const n = maNote(f.id);
+  return `
+    <details class="carte" id="bloc-note" style="margin:0 0 24px;padding:14px 18px" ${n ? "open" : ""}>
+      <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <span class="rang" style="gap:8px;align-items:center">
+          <span class="pastille bleu">Ma note</span>
+          <span class="tiny muted">${n ? "note enregistrée sur cette fiche" : "ajouter une note personnelle"}</span>
+        </span>
+        <span id="note-etat" class="tiny muted"></span>
+      </summary>
+      <p class="tiny muted" style="margin:12px 0 8px;line-height:1.55">
+        Visible seulement sur ton compte. La fiche reste inchangée pour les autres.
+      </p>
+      <textarea id="note-zone" placeholder="Ce que tu n'as pas compris, un moyen mnémotechnique, un renvoi vers ton cours…"
+        style="min-height:110px;width:100%"
+        oninput="saisirNote(${jsArg(f.id)}, this.value)">${esc(n)}</textarea>
+      <div class="rang" style="gap:8px;margin-top:10px">
+        <button class="btn mini fantome" type="button" onclick="effacerNote(${jsArg(f.id)})">Effacer ma note</button>
+      </div>
+    </details>`;
+}
+
+const _ouvrirFicheOrigine = ouvrirFiche;
+ouvrirFiche = function(id){
+  _ouvrirFicheOrigine(id);
+  const f = DB.fiches.find(x => x.id === id);
+  if(!f || !U) return;
+  const article = document.querySelector("#zone .lecteur");
+  if(!article) return;
+  const titre = article.querySelector("h1");
+  if(titre) titre.insertAdjacentHTML("afterend", htmlPanneauNote(f));
+  else article.insertAdjacentHTML("afterbegin", htmlPanneauNote(f));
+};
+
+const _carteFicheOrigine = carteFiche;
+carteFiche = function(f, q, avecMatiere){
+  let html = _carteFicheOrigine(f, q, avecMatiere);
+  if(maNote(f.id)){
+    html = html.replace('<div class="rang" style="gap:8px">',
+      '<div class="rang" style="gap:8px"><span class="pastille bleu">Ma note</span>');
+  }
+  return html;
+};
+
+
+/* ---------------------------------------------------------------------
+   2. LECTURE DU PDF
+   PDF.js lit le document dans le navigateur. Les fragments d'une meme
+   ligne partagent la meme ordonnee : on les regroupe pour reconstituer
+   des lignes exploitables.
+   --------------------------------------------------------------------- */
+
+/* Decoupage recursif de la page en blocs, puis en lignes, dans l'ordre de
+   lecture. Sans lui, deux encadres situes a la meme hauteur se retrouvent
+   colles sur une meme ligne : « 1.DEFINITION 4.LA DOUBLE HELICE ». */
+const TROU_H = 5;        // hauteur minimale d'une bande vide, en points
+const TROU_V = 6;        // largeur minimale d'une gouttiere verticale
+const PROFONDEUR = 8;
+
+function coupures(intervalles, minimum){
+  if(intervalles.length < 2) return { coupes:[], plusGrand:0 };
+  const tri = intervalles.slice().sort((a,b) => a[0] - b[0]);
+  const coupes = [];
+  let fin = tri[0][1], plusGrand = 0;
+  for(let i = 1; i < tri.length; i++){
+    const a = tri[i][0], b = tri[i][1], trou = a - fin;
+    if(trou >= minimum){ coupes.push((fin + a) / 2); if(trou > plusGrand) plusGrand = trou; }
+    if(b > fin) fin = b;
+  }
+  return { coupes, plusGrand };
+}
+
+/* On coupe dans la direction ou l'espace vide est le plus large : sinon les
+   lignes alignees de plusieurs encadres voisins font trancher a travers eux. */
+function decouperBloc(mots, profondeur, blocs){
+  if(!mots.length) return;
+  if(profondeur <= 0){ blocs.push(mots); return; }
+
+  const h = coupures(mots.map(m => [m.top, m.bottom]), TROU_H);
+  const v = coupures(mots.map(m => [m.x0, m.x1]), TROU_V);
+  if(!h.coupes.length && !v.coupes.length){ blocs.push(mots); return; }
+
+  const vertical = v.coupes.length && v.plusGrand >= h.plusGrand;
+  const c = vertical ? v.coupes : h.coupes;
+
+  const groupes = Array.from({ length: c.length + 1 }, () => []);
+  mots.forEach(m => {
+    const val = vertical ? (m.x0 + m.x1) / 2 : (m.top + m.bottom) / 2;
+    let i = 0;
+    while(i < c.length && val >= c[i]) i++;
+    groupes[i].push(m);
+  });
+  groupes.forEach(g => decouperBloc(g, profondeur - 1, blocs));
+}
+
+function lignesDuBloc(mots){
+  const paquets = [];
+  mots.forEach(m => {
+    let p = paquets.find(x => Math.abs(x.y - m.top) <= 3);
+    if(!p){ p = { y:m.top, mots:[] }; paquets.push(p); }
+    p.mots.push(m);
+  });
+  return paquets
+    .sort((a,b) => a.y - b.y)
+    .map(p => ({
+      y: p.y,
+      h: Math.max.apply(null, p.mots.map(m => m.h || 10)),
+      txt: p.mots.sort((a,b) => a.x0 - b.x0).map(m => m.s).join(" ").replace(/\s+/g," ").trim()
+    }))
+    .filter(l => l.txt);
+}
+
+/* Fragments PDF.js -> boites positionnees, origine en haut a gauche */
+function motsDeLaPage(items, hauteur){
+  const out = [];
+  items.forEach(it => {
+    const t = (it.str || "").replace(/\s+/g," ").trim();
+    if(!t) return;
+    const x = it.transform[4], y = it.transform[5];
+    const larg = it.width || 0, haut = it.height || 10;
+    out.push({ s:t, x0:x, x1:x + larg, top:hauteur - y - haut, bottom:hauteur - y, h:haut });
+  });
+  return out;
+}
+
+/* Lignes d'une page, dans l'ordre de lecture. Pas de tri global apres coup :
+   la recursion produit deja le bon ordre, le retrier le detruirait. */
+function lignesOrdonnees(mots){
+  if(!mots.length) return [];
+  const blocs = [];
+  decouperBloc(mots, PROFONDEUR, blocs);
+  const out = [];
+  blocs.forEach(b => lignesDuBloc(b).forEach(l => out.push(l)));
+  return out;
+}
+
+const PDFJS_SRC    = "/security/vendor/pdf.mjs";
+const PDFJS_WORKER = "/security/vendor/pdf.worker.mjs";
+
+let pdfjsPret = null;
+function chargerPdfJs(){return pdfjs();}
+
+async function lignesDuPdf(url, surAvancement){
+  const lib = await chargerPdfJs();
+  const doc = await lib.getDocument({...PDF_OPTIONS,url}).promise;
+  const lignes = [];
+
+  for(let p = 1; p <= doc.numPages; p++){
+    if(surAvancement) surAvancement("Lecture de la page " + p + " sur " + doc.numPages + "…");
+    const page = await doc.getPage(p);
+    const contenu = await page.getTextContent();
+
+    const vp = page.getViewport({ scale:1 });
+    lignesOrdonnees(motsDeLaPage(contenu.items, vp.height))
+      .forEach(l => lignes.push(l.txt));
+    page.cleanup();
+  }
+  return lignes;
+}
+
+
+/* ---------------------------------------------------------------------
+   3. LECTURE DU QCM ET DES CORRECTIONS
+   Format attendu, celui des fiches d'Alycia :
+     Partie 1 – QCM        1. énoncé / A. … B. … C. … D. …
+     Partie 2 – Vrai ou Faux
+     Partie 3 – Questions courtes
+     Correction du QCM     1. énoncé / B - explication
+     Correction du vrai ou faux   11. énoncé / Vrai → explication
+     Correction des questions     21. énoncé / Réponse attendue : …
+   --------------------------------------------------------------------- */
+
+const RE_NUM  = /^(\d{1,2})\s*[.)]\s*(.*)$/;
+const RE_OPT  = /^([A-F])\s*[.)]\s+(.+)$/;
+const RE_CORR = /^([A-F])\s*[-–—]\s*(.+)$/;
+const RE_VF   = /^(Vrai|Faux)\s*[→>:\-–—]*\s*(.*)$/i;
+const RE_REP  = /^R[ée]ponse attendue\s*:?\s*(.*)$/i;
+
+/* Lignes situées entre deux marqueurs, bornes exclues */
+function zoneEntre(lignes, debut, fin){
+  let i = null, j = null;
+  for(let k = 0; k < lignes.length; k++){
+    if(i === null && debut.test(lignes[k])) i = k + 1;
+    else if(i !== null && fin && fin.test(lignes[k])){ j = k; break; }
+  }
+  if(i === null) return [];
+  return lignes.slice(i, j === null ? lignes.length : j);
+}
+
+/* Regroupe par numéro : « 1. … » jusqu'au « 2. … » suivant */
+function blocsNumerotes(lignes){
+  const blocs = [];
+  let cour = null;
+  lignes.forEach(l => {
+    const m = l.match(RE_NUM);
+    if(m){
+      cour = { n: parseInt(m[1], 10), lignes: m[2] ? [m[2]] : [] };
+      blocs.push(cour);
+    }else if(cour){
+      cour.lignes.push(l);
+    }
+  });
+  return blocs;
+}
+
+function lireQcm(lignes){
+  const out = [];
+  blocsNumerotes(lignes).forEach(b => {
+    const enonce = [], options = [];
+    b.lignes.forEach(l => {
+      const m = l.match(RE_OPT);
+      if(m) options.push(m[2].trim());
+      else if(options.length) options[options.length-1] += " " + l;   // option sur deux lignes
+      else enonce.push(l);
+    });
+    if(options.length >= 2) out.push({ n:b.n, q:enonce.join(" ").trim(), o:options });
+  });
+  return out;
+}
+
+function lireCorrectionsQcm(lignes){
+  const out = {};
+  blocsNumerotes(lignes).forEach(b => {
+    let lettre = null; const expl = [];
+    b.lignes.forEach(l => {
+      const m = l.match(RE_CORR);
+      if(m && lettre === null){ lettre = m[1]; expl.push(m[2]); }
+      else if(lettre !== null) expl.push(l);
+    });
+    if(lettre) out[b.n] = { lettre, e: expl.join(" ").trim() };
+  });
+  return out;
+}
+
+function lireEnonces(lignes){
+  const out = {};
+  blocsNumerotes(lignes).forEach(b => { out[b.n] = b.lignes.join(" ").trim(); });
+  return out;
+}
+
+function lireCorrectionsVf(lignes){
+  const out = {};
+  blocsNumerotes(lignes).forEach(b => {
+    let verdict = null; const expl = [];
+    b.lignes.forEach(l => {
+      const m = l.match(RE_VF);
+      if(m && verdict === null){ verdict = m[1].toLowerCase(); if(m[2]) expl.push(m[2]); }
+      else if(verdict !== null) expl.push(l);
+    });
+    if(verdict) out[b.n] = { vrai: verdict === "vrai", e: expl.join(" ").trim() };
+  });
+  return out;
+}
+
+function lireCorrectionsCourtes(lignes){
+  const out = {};
+  blocsNumerotes(lignes).forEach(b => {
+    const rep = []; let dans = false;
+    b.lignes.forEach(l => {
+      const m = l.match(RE_REP);
+      if(m){ dans = true; if(m[1]) rep.push(m[1]); }
+      else if(dans) rep.push(l);
+    });
+    if(rep.length) out[b.n] = rep.join(" ").trim();
+  });
+  return out;
+}
+
+/* Assemblage : énoncés + corrections → questions prêtes pour DB.questions */
+function extraireQuiz(lignes){
+  const qcm     = lireQcm(zoneEntre(lignes, /Partie\s*1|QCM\s*\(/i, /Partie\s*2/i));
+  const vf      = lireEnonces(zoneEntre(lignes, /Partie\s*2/i, /Partie\s*3/i));
+  const courtes = lireEnonces(zoneEntre(lignes, /Partie\s*3/i, /Correction/i));
+  const cq      = lireCorrectionsQcm(zoneEntre(lignes, /Correction du QCM/i, /Correction du vrai/i));
+  const cvf     = lireCorrectionsVf(zoneEntre(lignes, /Correction du vrai/i, /Correction des questions/i));
+  const cc      = lireCorrectionsCourtes(zoneEntre(lignes, /Correction des questions/i, null));
+
+  const questions = [], cartes = [], orphelines = [];
+
+  qcm.forEach(q => {
+    const c = cq[q.n];
+    if(!c){ orphelines.push("QCM n°" + q.n + " : pas de correction trouvée"); return; }
+    const r = c.lettre.charCodeAt(0) - 65;
+    if(r < 0 || r >= q.o.length){ orphelines.push("QCM n°" + q.n + " : réponse « " + c.lettre + " » hors des options"); return; }
+    questions.push({ q:q.q, o:q.o, r, e:c.e, origine:"QCM n°" + q.n });
+  });
+
+  Object.keys(vf).forEach(n => {
+    const c = cvf[n];
+    if(!c){ orphelines.push("Vrai/Faux n°" + n + " : pas de correction trouvée"); return; }
+    questions.push({ q:vf[n], o:["Vrai","Faux"], r: c.vrai ? 0 : 1, e:c.e, origine:"Vrai/Faux n°" + n });
+  });
+
+  Object.keys(courtes).forEach(n => {
+    const rep = cc[n];
+    if(!rep){ orphelines.push("Question courte n°" + n + " : pas de réponse trouvée"); return; }
+    cartes.push({ recto:courtes[n], verso:rep, source:"Question courte n°" + n });
+  });
+
+  return { questions, cartes, orphelines };
+}
+
+
+/* ---------------------------------------------------------------------
+   4. REPLI : reperage de definitions
+   Pour une fiche sans QCM, on retombe sur les tournures « Terme : … ».
+   --------------------------------------------------------------------- */
+
+const RE_DEUX_POINTS = /^[•\-–—*\s]*(.{3,80}?)\s*[:：]\s+(.{15,500})$/;
+
+function nettoyer(t){
+  return String(t).replace(/\s+/g," ").replace(/^[•\-–—*\s]+/,"").trim();
+}
+
+function cartesParDefinitions(lignes){
+  const cartes = [], vus = new Set();
+  lignes.forEach((brute, i) => {
+    const l = nettoyer(brute);
+    if(l.length < 20) return;
+    const m = l.match(RE_DEUX_POINTS);
+    if(!m) return;
+    const recto = nettoyer(m[1]), verso = nettoyer(m[2]);
+    const cle = recto.toLowerCase();
+    if(recto.length < 3 || verso.length < 15 || vus.has(cle)) return;
+    if(/^\d+$/.test(recto)) return;
+    vus.add(cle);
+    cartes.push({ recto: recto.endsWith("?") ? recto : recto + " ?", verso, source:"définition" });
+  });
+  return cartes;
+}
+
+
+/* ---------------------------------------------------------------------
+   5. INTERFACE : extraction, relecture, enregistrement
+   --------------------------------------------------------------------- */
+
+let Extraction = { questions:[], cartes:[], orphelines:[], ficheId:null };
+
+async function extraireDuPdf(ficheId){
+  const f = DB.fiches.find(x => x.id === ficheId);
+  if(!f) return;
+  if(!f.pdf) return toast("Cette fiche n'a pas de document PDF.","ko");
+
+  modale(`
+    <p class="eyebrow">Extraction</p>
+    <h2 style="margin:8px 0 14px">${esc(f.t)}</h2>
+    <p id="gen-etat" class="small muted">Ouverture du document…</p>
+    <p class="tiny muted" style="margin-top:14px;line-height:1.55">
+      Le PDF est lu dans ton navigateur. Le QCM, les vrai/faux et leurs
+      corrections sont repris tels qu'ils sont écrits : rien n'est inventé,
+      et rien n'est enregistré tant que tu n'as pas validé.
+    </p>`);
+
+  const dire = t => { const e = $("#gen-etat"); if(e) e.textContent = t; };
+
+  try{
+    const lignes = await lignesDuPdf(f.pdf, dire);
+    dire("Analyse du contenu…");
+
+    if(lignes.length < 5){
+      fermerModale();
+      return toast("Ce PDF ne contient pas de texte sélectionnable : il est probablement scanné en image.","ko");
+    }
+
+    const r = extraireQuiz(lignes);
+    if(!r.questions.length && !r.cartes.length){
+      // pas de QCM dans ce document : on tente les définitions
+      r.cartes = cartesParDefinitions(lignes);
+    }
+
+    if(!r.questions.length && !r.cartes.length){
+      fermerModale();
+      return toast("Rien d'exploitable trouvé. Ce PDF ne contient ni QCM ni définitions repérables.","ko");
+    }
+
+    Extraction = { questions:r.questions, cartes:r.cartes, orphelines:r.orphelines, ficheId };
+    fermerModale();
+    modaleRelecture(f);
+
+  }catch(e){
+    fermerModale();
+    toast("Lecture impossible : " + e.message, "ko");
+  }
+}
+
+function modaleRelecture(f){
+  const E = Extraction;
+  const lettres = ["A","B","C","D","E","F"];
+
+  const blocQuestion = (q, i) => `
+    <div class="carte" style="padding:14px;margin-bottom:10px">
+      <label class="rang" style="gap:8px;align-items:center;margin-bottom:10px">
+        <input type="checkbox" class="ex-q" data-i="${i}" checked style="width:auto">
+        <span class="tiny muted">${esc(q.origine)}</span>
+      </label>
+      <div class="champ" style="margin-bottom:8px">
+        <label class="tiny">Énoncé</label>
+        <textarea class="ex-q-txt" data-i="${i}" style="min-height:52px">${esc(q.q)}</textarea>
+      </div>
+      <p class="tiny muted" style="margin-bottom:6px">Réponses — la bonne est en vert</p>
+      ${q.o.map((o,j) => `<p class="tiny" style="margin-bottom:3px;color:${j===q.r?"var(--vert)":"var(--doux)"}">
+        <b>${lettres[j]}.</b> ${esc(o)}</p>`).join("")}
+      <div class="champ" style="margin:10px 0 0">
+        <label class="tiny">Explication</label>
+        <textarea class="ex-q-exp" data-i="${i}" style="min-height:52px">${esc(q.e)}</textarea>
+      </div>
+    </div>`;
+
+  const blocCarte = (c, i) => `
+    <div class="carte" style="padding:14px;margin-bottom:10px">
+      <label class="rang" style="gap:8px;align-items:center;margin-bottom:10px">
+        <input type="checkbox" class="ex-c" data-i="${i}" checked style="width:auto">
+        <span class="tiny muted">${esc(c.source || "")}</span>
+      </label>
+      <div class="champ" style="margin-bottom:8px">
+        <label class="tiny">Recto</label>
+        <textarea class="ex-c-r" data-i="${i}" style="min-height:48px">${esc(c.recto)}</textarea>
+      </div>
+      <div class="champ" style="margin-bottom:0">
+        <label class="tiny">Verso</label>
+        <textarea class="ex-c-v" data-i="${i}" style="min-height:60px">${esc(c.verso)}</textarea>
+      </div>
+    </div>`;
+
+  modale(`
+    <p class="eyebrow">Relecture avant enregistrement</p>
+    <h2 style="margin:8px 0 6px">${esc(f.t)}</h2>
+    <p class="small muted" style="margin-bottom:12px">
+      ${E.questions.length} question${E.questions.length>1?"s":""} de quiz ·
+      ${E.cartes.length} flashcard${E.cartes.length>1?"s":""}.
+      Les questions iront dans « ${esc(nomMat(f.m))} · ${esc(f.ch)} ».
+    </p>
+    ${E.orphelines.length ? `<details class="carte" style="padding:10px 14px;margin-bottom:14px">
+      <summary class="tiny muted" style="cursor:pointer">${E.orphelines.length} élément(s) écarté(s) faute de correction</summary>
+      <ul class="tiny muted" style="margin:8px 0 0 16px;line-height:1.6">
+        ${E.orphelines.map(o => `<li>${esc(o)}</li>`).join("")}</ul></details>` : ""}
+    <div class="rang" style="gap:8px;margin-bottom:14px">
+      <button class="btn mini fantome" type="button" onclick="cocherExtraction(true)">Tout cocher</button>
+      <button class="btn mini fantome" type="button" onclick="cocherExtraction(false)">Tout décocher</button>
+    </div>
+    <div style="max-height:50vh;overflow:auto;padding-right:6px">
+      ${E.questions.length ? `<p class="eyebrow" style="margin-bottom:10px">Questions de quiz</p>
+        ${E.questions.map(blocQuestion).join("")}` : ""}
+      ${E.cartes.length ? `<p class="eyebrow" style="margin:18px 0 10px">Flashcards</p>
+        ${E.cartes.map(blocCarte).join("")}` : ""}
+    </div>
+    <button class="btn primaire large" type="button" style="margin-top:16px" onclick="enregistrerExtraction()">Enregistrer la sélection</button>
+    <button class="btn fantome" type="button" style="width:100%;margin-top:8px" onclick="fermerModale()">Annuler</button>`, true);
+}
+
+function cocherExtraction(etat){
+  document.querySelectorAll(".ex-q, .ex-c").forEach(c => { c.checked = etat; });
+}
+
+function valeur(selecteur, i){
+  const el = document.querySelector(selecteur + '[data-i="' + i + '"]');
+  return el ? el.value.trim() : "";
+}
+
+async function enregistrerExtraction(){
+  const E = Extraction;
+  const f = DB.fiches.find(x => x.id === E.ficheId);
+  if(!f) return;
+
+  const nouvellesQuestions = [];
+  document.querySelectorAll(".ex-q").forEach(choix => {
+    if(!choix.checked) return;
+    const i = choix.dataset.i, src = E.questions[i];
+    const enonce = valeur(".ex-q-txt", i);
+    if(!enonce) return;
+    nouvellesQuestions.push({
+      id: uid("q"), m: f.m, ch: f.ch, ficheId:f.id, prem:!!f.prem,
+      q: enonce, o: src.o.slice(), r: src.r, e: valeur(".ex-q-exp", i)
+    });
+  });
+
+  const nouvellesCartes = [];
+  document.querySelectorAll(".ex-c").forEach(choix => {
+    if(!choix.checked) return;
+    const i = choix.dataset.i;
+    const r = valeur(".ex-c-r", i), v = valeur(".ex-c-v", i);
+    if(r && v) nouvellesCartes.push({ r, v, src: f.t });
+  });
+
+  if(!nouvellesQuestions.length && !nouvellesCartes.length)
+    return toast("Rien de coché.","ko");
+
+  const avantQ = DB.questions.length;
+  DB.questions.push(...nouvellesQuestions);
+  const avantC = (f.cartes || []).slice();
+  f.cartes = avantC.concat(nouvellesCartes);
+
+  try{
+    await sauverContenu();
+    fermerModale();
+    Extraction = { questions:[], cartes:[], orphelines:[], ficheId:null };
+    const bouts = [];
+    if(nouvellesQuestions.length) bouts.push(nouvellesQuestions.length + " question" + (nouvellesQuestions.length>1?"s":""));
+    if(nouvellesCartes.length) bouts.push(nouvellesCartes.length + " flashcard" + (nouvellesCartes.length>1?"s":""));
+    toast(bouts.join(" et ") + " enregistrée(s).","ok");
+    App.aller("dev");
+  }catch(e){
+    DB.questions.length = avantQ;          // on ne laisse rien à moitié fait
+    f.cartes = avantC;
+    toast("Publication impossible : " + e.message,"ko");
+  }
+}
+
+/* Les cartes enregistrees rejoignent le jeu de flashcards */
+const _fabriquerCartesOrigine = fabriquerCartes;
+fabriquerCartes = function(mid, source){
+  const cartes = _fabriquerCartesOrigine(mid, source);
+  if(source !== "questions"){
+    DB.fiches.filter(f => mid === "all" || f.m === mid).forEach(f => {
+      if(f.prem && !accesPremium()) return;
+      (f.cartes || []).forEach(c => cartes.push({ r:c.r, v:c.v, src:c.src || f.t, m:f.m, schemaR:c.schemaR || "", schemaV:c.schemaV || "" }));
+    });
+  }
+  return cartes;
+};
+
+/* Bouton injecte dans le formulaire d'edition de fiche */
+const _editFicheOrigine = editFiche;
+editFiche = function(id){
+  _editFicheOrigine(id);
+  if(!id) return;
+  const f = DB.fiches.find(x => x.id === id);
+  if(!f || !f.pdf) return;
+  const champ = document.getElementById("f-pdf");
+  if(!champ) return;
+  const nb = (f.cartes || []).length;
+  champ.closest(".champ").insertAdjacentHTML("beforeend", `
+    <div class="rang" style="gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap">
+      <button type="button" class="btn mini" onclick="extraireDuPdf(${jsArg(id)})">Extraire le quiz et les flashcards</button>
+      ${nb ? `<span class="tiny muted">${nb} carte${nb>1?"s":""} déjà enregistrée${nb>1?"s":""}</span>
+              <button type="button" class="btn mini fantome" onclick="viderCartes(${jsArg(id)})">Retirer les cartes</button>` : ""}
+    </div>
+    <p class="tiny muted" style="margin-top:8px;line-height:1.55">
+      Reprend le QCM, les vrai/faux et les questions courtes présents dans le PDF,
+      avec leurs corrections. Tu relis tout avant enregistrement.
+    </p>`);
+};
+
+function viderCartes(ficheId){
+  const f = DB.fiches.find(x => x.id === ficheId);
+  if(!f) return;
+  f.cartes = [];
+  sauverContenu()
+    .then(() => { fermerModale(); toast("Cartes retirées.","ok"); App.aller("dev"); })
+    .catch(e => toast("Publication impossible : " + e.message,"ko"));
+}
+
+
+/* ---------------------------------------------------------------------
+   6. IMPORT : deux rendus au choix
+   - « texte »  : transcription structuree, recherchable, quiz et flashcards
+                  possibles, mais la mise en page d'origine est perdue.
+   - « images » : chaque page est rendue telle quelle. Rien n'est extrait,
+                  donc rien ne peut etre mal decoupe. En contrepartie le
+                  contenu n'est ni recherchable ni exploitable pour les quiz.
+   --------------------------------------------------------------------- */
+
+const _modaleImportPdfOrigine = modaleImportPdf;
+modaleImportPdf = function(){
+  _modaleImportPdfOrigine();
+  const mode = document.getElementById("ip-mode");
+  if(!mode) return;
+  mode.closest(".champ").insertAdjacentHTML("beforebegin", `
+    <div class="champ">
+      <label>Rendu de la fiche</label>
+      <select id="ip-rendu" onchange="majRenduImport()">
+        <option value="texte">Transcription en texte — recherchable, quiz possibles</option>
+        <option value="images">Pages en images — mise en page conservée à l'identique</option>
+      </select>
+      <p class="tiny muted" id="ip-aide-rendu" style="margin-top:7px;line-height:1.55">
+        Le texte est extrait et remis en forme. La mise en page d'origine
+        (encadrés, couleurs, colonnes) n'est pas conservée.
+      </p>
+    </div>`);
+};
+
+function majRenduImport(){
+  const images = (document.getElementById("ip-rendu") || {}).value === "images";
+  const aide = document.getElementById("ip-aide-rendu");
+  if(aide) aide.textContent = images
+    ? "Chaque page est enregistrée telle quelle, en image. Rien n'est extrait : aucun risque de découpage bancal, mais la fiche n'est pas recherchable et ne sert pas aux quiz."
+    : "Le texte est extrait et remis en forme. La mise en page d'origine (encadrés, couleurs, colonnes) n'est pas conservée.";
+  // les options propres à la transcription n'ont plus de sens en mode image
+  const img = document.getElementById("ip-img");
+  if(img){
+    img.disabled = images;
+    const l = img.closest("label");
+    if(l) l.style.opacity = images ? ".4" : "";
+  }
+  const mode = document.getElementById("ip-mode");
+  if(mode){
+    const parTitre = mode.querySelector('option[value="titre"]');
+    if(parTitre){
+      parTitre.disabled = images;                 // aucun titre détecté sans texte
+      if(images && mode.value === "titre") mode.value = "page";
+    }
+  }
+}
+
+/* Rendu de toutes les pages demandées, sans aucune extraction de texte */
+async function rendreLesPages(fichier, conf, progres){
+  const donnees = await fichier.arrayBuffer();
+  const { doc } = await ouvrirDocument(donnees);
+  const premiere = Math.max(1, conf.de || 1);
+  const derniere = Math.min(doc.numPages, conf.a || doc.numPages);
+  const pages = [];
+  for(let n = premiere; n <= derniere; n++){
+    if(progres) progres(n - premiere + 1, derniere - premiere + 1, n);
+    await patienter();
+    const page = await doc.getPage(n);
+    pages.push({ n, image: await rendrePage(page, 1500) });
+    page.cleanup();
+  }
+  return pages;
+}
+
+/* Pages rendues -> fiches, selon le découpage choisi */
+function fichesDepuisImages(pages, mode, titreDefaut){
+  const base = titreDefaut || "Fiche importée";
+  if(mode === "page"){
+    return pages.map(p => ({ t: base + " — page " + p.n, s:[], img:[p.image], pages:[p.n] }));
+  }
+  return [{ t: base, s:[], img: pages.map(p => p.image), pages: pages.map(p => p.n) }];
+}
+
+/* On remplace lancerImportPdf pour aiguiller vers l'un ou l'autre rendu */
+lancerImportPdf = async function(e){
+  e.preventDefault();
+  const fichier = $("#ip-fichier").files[0];
+  if(!fichier) return;
+  const etat = $("#ip-etat");
+  const conf = {
+    m: $("#ip-m").value, ch: $("#ip-ch").value.trim(), mode: $("#ip-mode").value,
+    titre: $("#ip-titre").value.trim(), img: $("#ip-img").checked, prem: $("#ip-prem").checked,
+    rendu: ($("#ip-rendu") || { value:"texte" }).value,
+    de: parseInt($("#ip-de").value, 10) || 1,
+    a:  parseInt($("#ip-a").value, 10) || 0
+  };
+  const bouton = e.target.querySelector('button[type=submit]');
+  if(bouton){ bouton.disabled = true; bouton.textContent = "Lecture en cours…"; }
+
+  try{
+    let fiches, nbPages;
+
+    if(conf.rendu === "images"){
+      etat.textContent = "Préparation du rendu…";
+      const pages = await rendreLesPages(fichier, conf,
+        (i, total, page) => { etat.textContent = `Rendu ${i}/${total} (page ${page} du document)…`; });
+      if(!pages.length) return toast("Aucune page à rendre sur cette plage.","ko");
+      fiches = fichesDepuisImages(pages, conf.mode, conf.titre || fichier.name.replace(/\.pdf$/i,""));
+      nbPages = pages.length;
+
+    }else{
+      etat.textContent = "Chargement de la bibliothèque PDF…";
+      const pages = await analyserPdf(fichier, conf.img,
+        (i, total, page) => { etat.textContent = `Lecture ${i}/${total} (page ${page} du document)…`; },
+        conf.de, conf.a);
+      fiches = structurerPdf(pages, conf.mode, conf.titre || fichier.name.replace(/\.pdf$/i,""));
+      nbPages = pages.length;
+      if(!fiches.length)
+        return toast("Aucun texte exploitable. Ce PDF est peut-être un scan : essaie le rendu en images.","ko");
+    }
+
+    ImportEnCours = { conf, fiches, pages: nbPages };
+    fermerModale();
+    apercuImport();
+
+  }catch(err){
+    console.error("import PDF", err);
+    etat.textContent = "";
+    if(bouton){ bouton.disabled = false; bouton.textContent = "Analyser le PDF"; }
+    toast("Lecture impossible : " + err.message, "ko");
+  }
+};
+
+/* Une fiche en images n'a pas de sections : on l'annonce clairement
+   dans la liste plutot que d'afficher « 0 sections · 0 points clés ». */
+const _carteFicheAvantImages = carteFiche;
+carteFiche = function(f, q, avecMatiere){
+  let html = _carteFicheAvantImages(f, q, avecMatiere);
+  if(!f.pdf && !(f.s || []).length && (f.img || []).length){
+    html = html.replace("0 sections · 0 points clés",
+      f.img.length + " page" + (f.img.length > 1 ? "s" : "") + " en image");
+  }
+  return html;
+};
+
+
+/* ---------------------------------------------------------------------
+   7. ONGLET FLASHCARDS DANS LA CONSOLE
+   Les cartes vivent dans f.cartes, sur chaque fiche. Cet onglet les
+   rassemble pour pouvoir les relire, les corriger et en écrire à la main,
+   sans repasser par l'extraction d'un PDF.
+   Les cartes fabriquées automatiquement depuis les points de cours ne sont
+   pas listées ici : elles n'existent pas en base, elles sont recalculées
+   à chaque séance.
+   --------------------------------------------------------------------- */
+
+function toutesLesCartes(){
+  const out = [];
+  DB.fiches.forEach(f => (f.cartes || []).forEach((c, i) => {
+    out.push({ ficheId:f.id, i, fiche:f, c });
+  }));
+  return out;
+}
+
+function cartesFiltrees(){
+  const q = norm(rechercheDev.trim());
+  return toutesLesCartes()
+    .filter(x => filtreDev === "all" || x.fiche.m === filtreDev)
+    .filter(x => !q || norm(sansBalises(x.c.r + " " + x.c.v + " " + x.fiche.t)).includes(q));
+}
+
+function corpsCartes(){
+  const liste = cartesFiltrees(), q = norm(rechercheDev.trim());
+  if(!liste.length) return `<tr><td colspan="5" class="muted" style="text-align:center;padding:26px">
+    Aucune carte enregistrée. Crée-en une, ou extrais-les d'un PDF depuis une fiche.</td></tr>`;
+  return liste.map(x => `<tr>
+      <td style="max-width:280px">${surligner(x.c.r, q)}${x.c.schemaR || x.c.schemaV ? '<br><span class="pastille bleu">Avec schéma</span>' : ''}</td>
+      <td style="max-width:320px" class="muted">${surligner((x.c.v || "").slice(0,150), q)}${(x.c.v||"").length>150?"…":""}</td>
+      <td><span class="pastille">${esc(nomMat(x.fiche.m))}</span></td>
+      <td class="muted">${esc(x.fiche.t)}</td>
+      <td style="white-space:nowrap;text-align:right">
+        <button class="btn mini fantome" onclick="editCarte(${jsArg(x.ficheId)},${x.i})">Modifier</button>
+        <button class="btn mini fantome" style="color:var(--rouge)" onclick="supprimerCarte(${jsArg(x.ficheId)},${x.i})">Supprimer</button>
+      </td></tr>`).join("");
+}
+
+function filtrerDevCartes(v){
+  rechercheDev = v;
+  const c = document.getElementById("corps-cartes");
+  if(c) c.innerHTML = corpsCartes();
+  const n = document.getElementById("nb-cartes");
+  if(n) n.textContent = cartesFiltrees().length + " carte(s)";
+}
+
+function devCartes(){
+  const liste = cartesFiltrees();
+  const auto = fabriquerCartes("all","fiches").length - toutesLesCartes().length;
+  return `
+  <div class="entre" style="margin-bottom:16px">
+    <div class="rang" style="gap:8px">
+      <select style="width:auto" onchange="filtreDev=this.value;App.aller('dev')">
+        <option value="all">Toutes les matières</option>
+        ${DB.matieres.map(m=>`<option value="${m.id}" ${filtreDev===m.id?"selected":""}>${esc(m.nom)}</option>`).join("")}
+      </select>
+      <span class="small muted" id="nb-cartes">${liste.length} carte${liste.length>1?"s":""}</span>
+    </div>
+    <button class="btn primaire mini" onclick="editCarte()">+ Nouvelle carte</button>
+  </div>
+  ${champRecherche("q-dev-cartes", "Chercher dans les rectos, les versos, les fiches…", "filtrerDevCartes")}
+  <div class="carte" style="padding:6px 8px"><div class="tbl-scroll"><table>
+    <thead><tr><th>Recto</th><th>Verso</th><th>Matière</th><th>Fiche</th><th></th></tr></thead>
+    <tbody id="corps-cartes">${corpsCartes()}</tbody>
+  </table></div></div>
+  ${auto > 0 ? `<p class="tiny muted" style="margin-top:12px;line-height:1.55">
+    ${auto} carte${auto>1?"s":""} supplémentaire${auto>1?"s":""} ${auto>1?"sont fabriquées":"est fabriquée"} automatiquement
+    à partir des points de cours rédigés « Terme : définition ». Elles n'apparaissent pas ici
+    car elles sont recalculées à chaque séance : pour les modifier, corrige la fiche elle-même.</p>` : ""}`;
+}
+
+let SchemaCarte = null;
+
+function editCarte(ficheId, i){
+  const nouvelle = ficheId === undefined;
+  const f = nouvelle ? null : DB.fiches.find(x => x.id === ficheId);
+  const c = nouvelle ? { r:"", v:"" } : (f.cartes || [])[i];
+  if(!nouvelle && !c) return;
+  SchemaCarte = { r:c.schemaR || "", v:c.schemaV || "", pending:0, busy:false };
+
+  modale(`
+    <p class="eyebrow">${nouvelle ? "Nouvelle" : "Modifier la"} flashcard</p>
+    <h2 style="margin:8px 0 18px">${nouvelle ? "Création" : "Édition"}</h2>
+    <form onsubmit="sauverCarte(event,${jsArg(nouvelle ? "" : ficheId)},${nouvelle ? -1 : i})">
+      <div class="champ"><label>Fiche à laquelle rattacher la carte</label>
+        <select id="ca-f" ${nouvelle ? "" : "disabled"}>
+          ${DB.fiches.map(x => `<option value="${x.id}" ${(!nouvelle && x.id===ficheId)?"selected":""}>${esc(nomMat(x.m))} · ${esc(x.t)}</option>`).join("")}
+        </select>
+        ${nouvelle ? `<p class="tiny muted" style="margin-top:7px">La carte apparaîtra dans les séances de cette matière.</p>` : ""}
+      </div>
+      <div class="champ"><label>Recto — la question ou le terme</label>
+        <textarea id="ca-r" style="min-height:70px" placeholder="Question, terme ou schéma ci-dessous">${esc(c.r)}</textarea></div>
+      ${editeurSchemaCarte("r", "recto")}
+      <div class="champ"><label>Verso — la réponse</label>
+        <textarea id="ca-v" style="min-height:110px" placeholder="Réponse ou schéma ci-dessous">${esc(c.v)}</textarea></div>
+      ${editeurSchemaCarte("v", "verso")}
+      <button class="btn primaire large" type="submit">Enregistrer</button>
+      <button class="btn fantome" type="button" style="width:100%;margin-top:8px" onclick="fermerModale()">Annuler</button>
+    </form>`, true);
+  apercuSchemaCarte("r"); apercuSchemaCarte("v");
+}
+
+function editeurSchemaCarte(face, nom){
+  return `<section class="schema-carte-edit" aria-label="Schéma du ${nom}">
+    <label for="ca-image-${face}">Schéma du ${nom} (facultatif)</label>
+    <input type="file" id="ca-image-${face}" accept="image/png,image/jpeg,image/webp" onchange="importerSchemaCarte(this,${jsArg(face)})">
+    <p class="tiny muted">PNG, JPEG ou WebP · 10 Mo maximum. L’image sera adaptée automatiquement.</p>
+    <div id="ca-apercu-${face}"></div>
+    <div class="rang" style="gap:8px;flex-wrap:wrap">
+      <button type="button" class="btn mini" onclick="dessinerSchemaCarte(${jsArg(face)})">Dessiner un schéma</button>
+      <button type="button" class="btn mini fantome" onclick="retirerSchemaCarte(${jsArg(face)})">Retirer le schéma</button>
+    </div>
+    <div class="schema-dessin" id="ca-dessin-${face}"></div>
+  </section>`;
+}
+
+function apercuSchemaCarte(face){
+  const zone = document.getElementById('ca-apercu-'+face), source = SchemaCarte && SchemaCarte[face];
+  if(!zone) return;
+  zone.innerHTML = source ? `<img src="${sourceImage(source)}" data-med="${esc(source)}" alt="Aperçu du schéma du ${face==='r'?'recto':'verso'}">` : '<p class="tiny muted" style="margin:12px 0">Aucun schéma.</p>';
+  if(source) resoudreImages([source],zone);
+}
+
+async function importerSchemaCarte(input, face){
+  const fichier = input.files[0], brouillon = SchemaCarte;
+  if(!fichier || !brouillon || brouillon.busy) return;
+  if(!['image/png','image/jpeg','image/webp'].includes(fichier.type) || fichier.size > 10*1024*1024){
+    input.value=''; return toast('Choisis une image PNG, JPEG ou WebP de moins de 10 Mo.','ko');
+  }
+  brouillon.pending++;
+  brouillon.revisions=brouillon.revisions || {r:0,v:0};
+  const revision=++brouillon.revisions[face];
+  try{
+    const image = await compresserImage(fichier,1400);
+    if(SchemaCarte === brouillon && brouillon.revisions[face]===revision){ brouillon[face]=image; apercuSchemaCarte(face); }
+  }catch(err){ toast('Image illisible : '+err.message,'ko'); }
+  finally{ brouillon.pending--; input.value=''; }
+}
+
+function dessinerSchemaCarte(face){
+  const brouillon=SchemaCarte, zone=document.getElementById('ca-dessin-'+face);
+  if(!brouillon || brouillon.busy || !zone) return;
+  if(zone.querySelector('canvas')) return;
+  zone.innerHTML=`<div style="margin-top:16px">
+    <p class="small">Nouveau dessin — modèles inspirés des couleurs des fiches</p>
+    <label for="dessin-titre-${face}" class="tiny">Titre du schéma</label>
+    <input id="dessin-titre-${face}" placeholder="Titre du schéma" maxlength="70" value="Mon schéma">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">
+      ${[1,2,3,4].map(i=>`<div><label for="dessin-label-${i}-${face}" class="tiny">Légende ${i}</label><input id="dessin-label-${i}-${face}" value="Étape ${i}" maxlength="60"></div>`).join('')}
+    </div>
+    <div class="rang" style="gap:8px;margin-top:10px">
+      <label for="dessin-modele-${face}" class="tiny">Modèle</label>
+      <select id="dessin-modele-${face}" style="width:auto"><option value="cycle">Cycle en 4 étapes</option><option value="etapes">Étapes avec flèches</option><option value="comparaison">Comparaison en 2 colonnes</option></select>
+      <button type="button" class="btn mini" data-dessin="modele">Appliquer le modèle</button>
+    </div>
+    <p class="tiny muted">Appliquer remplace le dessin courant. Tu peux annuler la dernière action.</p>
+    <div class="rang" style="gap:8px;margin-top:12px">
+      <label for="dessin-outil-${face}" class="tiny">Outil</label>
+      <select id="dessin-outil-${face}" style="width:auto"><option value="stylo">Stylo</option><option value="fleche">Flèche</option><option value="cadre">Cadre</option><option value="texte">Texte</option><option value="gomme">Gomme</option></select>
+      <label for="dessin-couleur-${face}" class="tiny">Couleur</label>
+      <input id="dessin-couleur-${face}" type="color" value="#b820df" style="width:48px;height:38px;padding:3px">
+      <label for="dessin-trait-${face}" class="tiny">Trait</label>
+      <select id="dessin-trait-${face}" style="width:auto"><option value="3">Fin</option><option value="6" selected>Moyen</option><option value="12">Épais</option></select>
+      <button type="button" class="btn mini" data-dessin="annuler">Annuler la dernière action</button>
+      <button type="button" class="btn mini" data-dessin="effacer">Effacer le dessin</button>
+    </div>
+    <div data-dessin="texte-options" hidden style="margin:12px 0">
+      <label for="dessin-texte-${face}">Texte à ajouter au dessin</label>
+      <textarea id="dessin-texte-${face}" rows="3" maxlength="300" placeholder="Écris ton texte ici"></textarea>
+      <label for="dessin-taille-${face}" class="tiny">Taille du texte</label>
+      <select id="dessin-taille-${face}"><option value="20">Petit</option><option value="28" selected>Moyen</option><option value="38">Grand</option></select>
+      <p class="tiny">Clique dans le dessin pour placer ton texte, ou utilise le bouton ci-dessous.</p>
+      <button type="button" class="btn mini" data-dessin="ajouter-texte">Ajouter au centre</button>
+    </div>
+    <canvas width="900" height="600" aria-label="Zone de dessin : utiliser la souris ou le doigt. Les modèles sont aussi accessibles au clavier."></canvas>
+    <div class="rang" style="gap:8px"><button type="button" class="btn primaire mini" data-dessin="utiliser">Utiliser ce dessin sur le ${face==='r'?'recto':'verso'}</button>
+    <button type="button" class="btn fantome mini" data-dessin="fermer">Fermer sans utiliser</button></div>
+  </div>`;
+  const canvas=zone.querySelector('canvas'), ctx=canvas.getContext('2d');
+  const champ=nom=>document.getElementById('dessin-'+nom+'-'+face);
+  const action=nom=>zone.querySelector('[data-dessin="'+nom+'"]');
+  let historique=[], debut=null, fond=null, dernier=null;
+  const capture=()=>ctx.getImageData(0,0,canvas.width,canvas.height);
+  const memoriser=()=>{historique.push(capture());if(historique.length>12)historique.shift();};
+  const blanc=()=>{ctx.fillStyle='#fff';ctx.fillRect(0,0,900,600);};
+  blanc();
+  const position=e=>{const r=canvas.getBoundingClientRect();return {x:Math.max(0,Math.min(900,(e.clientX-r.left)*900/r.width)),y:Math.max(0,Math.min(600,(e.clientY-r.top)*600/r.height))};};
+  function fleche(a,b){
+    const angle=Math.atan2(b.y-a.y,b.x-a.x), taille=18;
+    ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);
+    ctx.moveTo(b.x-taille*Math.cos(angle-.5),b.y-taille*Math.sin(angle-.5));ctx.lineTo(b.x,b.y);
+    ctx.lineTo(b.x-taille*Math.cos(angle+.5),b.y-taille*Math.sin(angle+.5));ctx.stroke();
+  }
+  champ('outil').onchange=()=>{action('texte-options').hidden=champ('outil').value!=='texte';};
+  function ajouterTexte(p){
+    const valeur=champ('texte').value.trim();if(!valeur){champ('texte').focus();return;}
+    memoriser();ctx.save();
+    const taille=Number(champ('taille').value), largeur=360;
+    ctx.font='600 '+taille+'px "Segoe UI",sans-serif';ctx.fillStyle=champ('couleur').value;ctx.textAlign='left';ctx.textBaseline='top';
+    const lignes=[];
+    valeur.split(/\r?\n/).forEach(paragraphe=>{let ligne='';for(const lettre of paragraphe){if(ligne&&ctx.measureText(ligne+lettre).width>largeur){lignes.push(ligne);ligne='';}ligne+=lettre;}lignes.push(ligne);});
+    const x=Math.max(0,Math.min(p.x,canvas.width-largeur)), y=Math.max(0,Math.min(p.y,canvas.height-lignes.length*(taille+7)));
+    lignes.forEach((ligne,i)=>ctx.fillText(ligne,x,y+i*(taille+7)));ctx.restore();
+  }
+  action('ajouter-texte').onclick=()=>ajouterTexte({x:270,y:250});
+  canvas.onpointerdown=e=>{
+    if(brouillon.busy || (e.pointerType==='mouse' && e.button!==0) || debut) return;
+    if(champ('outil').value==='texte'){e.preventDefault();ajouterTexte(position(e));return;}
+    e.preventDefault();memoriser();fond=capture();debut=dernier=position(e);canvas.setPointerCapture(e.pointerId);
+    ctx.lineCap='round';ctx.lineJoin='round';ctx.lineWidth=Number(champ('trait').value);
+    ctx.strokeStyle=champ('outil').value==='gomme'?'#fff':champ('couleur').value;
+    if(champ('outil').value==='gomme')ctx.lineWidth*=4;
+    if(['stylo','gomme'].includes(champ('outil').value)){
+      ctx.beginPath();ctx.moveTo(debut.x,debut.y);ctx.lineTo(debut.x+.1,debut.y);ctx.stroke();
+    }
+  };
+  canvas.onpointermove=e=>{
+    if(!debut) return;e.preventDefault();const p=position(e), outil=champ('outil').value;
+    if(outil==='fleche' || outil==='cadre'){
+      ctx.putImageData(fond,0,0);
+      if(outil==='fleche')fleche(debut,p);else ctx.strokeRect(debut.x,debut.y,p.x-debut.x,p.y-debut.y);
+    }else{ctx.beginPath();ctx.moveTo(dernier.x,dernier.y);ctx.lineTo(p.x,p.y);ctx.stroke();}
+    dernier=p;
+  };
+  canvas.onpointerup=e=>{if(!debut)return;canvas.onpointermove(e);debut=null;fond=null;if(canvas.hasPointerCapture(e.pointerId))canvas.releasePointerCapture(e.pointerId);};
+  canvas.onpointercancel=()=>{if(fond)ctx.putImageData(fond,0,0);if(debut)historique.pop();debut=null;fond=null;};
+  action('annuler').onclick=()=>{if(historique.length)ctx.putImageData(historique.pop(),0,0);};
+  action('effacer').onclick=()=>{memoriser();blanc();};
+  action('fermer').onclick=()=>{zone.innerHTML='';};
+  action('utiliser').onclick=()=>{
+    if(SchemaCarte!==brouillon || brouillon.busy || brouillon.pending) return;
+    brouillon[face]=canvas.toDataURL('image/jpeg',.85);apercuSchemaCarte(face);zone.innerHTML='';
+  };
+  function texte(t,x,y,largeur,couleur='#252033',taille=24){
+    ctx.fillStyle=couleur;ctx.font='600 '+taille+'px "Segoe UI",sans-serif';ctx.textAlign='center';
+    const mots=t.split(/\s+/);let ligne='',lignes=[];
+    for(const mot of mots){const suite=ligne?ligne+' '+mot:mot;if(ctx.measureText(suite).width>largeur&&ligne){lignes.push(ligne);ligne=mot;}else ligne=suite;}
+    if(ligne)lignes.push(ligne);
+    lignes.slice(0,3).forEach((l,i)=>ctx.fillText(l,x,y+i*(taille+7),largeur));
+  }
+  function boite(x,y,w,h,couleur,label,numero){
+    ctx.fillStyle='#fff';ctx.strokeStyle=couleur;ctx.lineWidth=3;ctx.beginPath();ctx.roundRect(x,y,w,h,14);ctx.fill();ctx.stroke();
+    ctx.fillStyle=couleur;ctx.beginPath();ctx.roundRect(x,y,w,44,[14,14,0,0]);ctx.fill();
+    texte(String(numero),x+w/2,y+30,w-20,'#17212c',22);texte(label,x+w/2,y+85,w-30);
+  }
+  action('modele').onclick=()=>{
+    memoriser();blanc();const labels=[1,2,3,4].map(i=>champ('label-'+i).value.trim());
+    const nom=i=>labels[i]||'Étape '+(i+1), couleurs=['#d86ce9','#5dddab','#ffb36a','#a698ed'];
+    texte(champ('titre').value||'Mon schéma',450,58,820,'#b820df',30);
+    const mode=champ('modele').value;
+    if(mode==='cycle'){
+      [[100,110],[540,110],[540,365],[100,365]].forEach(([x,y],i)=>boite(x,y,260,170,couleurs[i],nom(i),i+1));
+      ctx.strokeStyle='#7160b5';ctx.lineWidth=5;
+      [[{x:380,y:195},{x:520,y:195}],[{x:670,y:300},{x:670,y:345}],[{x:520,y:450},{x:380,y:450}],[{x:230,y:345},{x:230,y:300}]].forEach(([a,b])=>fleche(a,b));
+    }else if(mode==='etapes'){
+      for(let i=0;i<4;i++){boite(35+i*220,180,170,220,couleurs[i],nom(i),i+1);if(i<3){ctx.strokeStyle='#7160b5';ctx.lineWidth=4;fleche({x:211+i*220,y:290},{x:249+i*220,y:290});}}
+    }else{
+      boite(55,130,370,370,couleurs[1],nom(0),1);boite(475,130,370,370,couleurs[2],nom(1),2);
+      texte(labels[2]||'Caractéristiques',240,315,320,'#4b3f72',22);texte(labels[3]||'Caractéristiques',660,315,320,'#4b3f72',22);
+    }
+  };
+  action('modele').onclick();
+}
+
+function retirerSchemaCarte(face){
+  if(!SchemaCarte || SchemaCarte.busy || SchemaCarte.pending) return;
+  SchemaCarte[face]=''; apercuSchemaCarte(face);
+}
+
+async function sauverCarte(e, ficheId, i){
+  e.preventDefault();
+  const brouillon = SchemaCarte, formulaire = e.target;
+  if(!brouillon || brouillon.busy) return;
+  if(brouillon.pending) return toast('Attends la fin du chargement de l’image.','ko');
+  if(formulaire.querySelector('.schema-dessin canvas')) return toast('Utilise ton dessin ou ferme l’atelier avant d’enregistrer.','ko');
+  const cible = i < 0 ? $("#ca-f").value : ficheId;
+  const f = DB.fiches.find(x => x.id === cible);
+  if(!f) return toast("Fiche introuvable.","ko");
+
+  const r = $("#ca-r").value.trim(), v = $("#ca-v").value.trim();
+  if((!r && !brouillon.r) || (!v && !brouillon.v)) return toast("Ajoute du texte ou un schéma sur chaque face.","ko");
+
+  const avant = (f.cartes || []).slice();
+  brouillon.busy=true;
+  const controles=[...formulaire.querySelectorAll('button,input,textarea,select')].map(el=>[el,el.disabled]);
+  controles.forEach(([el])=>el.disabled=true);
+  try{
+    for(const face of ['r','v']){
+      if(brouillon[face].startsWith('data:')) brouillon[face]=await stockerImage(brouillon[face]);
+    }
+    const champs={r,v,schemaR:brouillon.r,schemaV:brouillon.v};
+    f.cartes = f.cartes || [];
+    if(i < 0) f.cartes.push({...champs,src:f.t});
+    else f.cartes[i] = Object.assign({},f.cartes[i],champs);
+    await sauverContenu();
+    if(SchemaCarte === brouillon){ fermerModale(); SchemaCarte=null; }
+    toast(i < 0 ? 'Carte ajoutée.' : 'Carte mise à jour.','ok'); App.aller('dev');
+  }catch(err){ f.cartes=avant; toast('Publication impossible : '+err.message,'ko'); }
+  finally{ brouillon.busy=false; controles.forEach(([el,disabled])=>el.disabled=disabled); }
+}
+
+function supprimerCarte(ficheId, i){
+  const f = DB.fiches.find(x => x.id === ficheId);
+  if(!f || !(f.cartes||[])[i]) return;
+  modale(`<h2 style="margin-bottom:8px">Supprimer cette carte ?</h2>
+    <p class="small muted" style="margin-bottom:8px">« ${esc(f.cartes[i].r)} »</p>
+    <p class="tiny muted" style="margin-bottom:20px">L'action est définitive.</p>
+    <div class="rang" style="gap:10px">
+      <button class="btn danger" style="flex:1" onclick="confirmerSuppCarte(${jsArg(ficheId)},${i})">Supprimer</button>
+      <button class="btn fantome" onclick="fermerModale()">Annuler</button></div>`);
+}
+
+function confirmerSuppCarte(ficheId, i){
+  const f = DB.fiches.find(x => x.id === ficheId);
+  if(!f) return;
+  const avant = f.cartes.slice();
+  f.cartes.splice(i, 1);
+  sauverContenu()
+    .then(() => { fermerModale(); toast("Carte supprimée."); App.aller("dev"); })
+    .catch(err => { f.cartes = avant; toast("Publication impossible : " + err.message,"ko"); });
+}
+
+/* On ajoute l'onglet à la console */
+vueDev = function(){
+  if(!U.dev) return `<div class="vide"><h3>Accès réservé</h3><p class="small">Cette console est réservée aux comptes développeur.</p></div>`;
+  const onglets = [["questions","Questions"],["fiches","Fiches"],["cartes","Flashcards"],["livres","Livres"],
+                   ["matieres","Matières"],["users","Utilisateurs"],["licences","Licences"],["donnees","Données"]];
+  const rendus = { questions:devQuestions, fiches:devFiches, cartes:devCartes, livres:devLivres,
+                   matieres:devMatieres, users:devUsers, licences:devLicences, donnees:devDonnees };
+  return `
+  <header class="tete">
+    <p class="eyebrow">Console développeur</p>
+    <h1>Gérer le contenu</h1>
+    <p class="muted">Tout ce que tu modifies ici est immédiatement visible côté élève.</p>
+  </header>
+  <div class="matiere-onglets">
+    ${onglets.map(([k,n]) => `<button class="chip ${ongletDev===k?"actif":""}" onclick="ongletDev=${jsArg(k)};rechercheDev='';App.aller('dev')">${n}</button>`).join("")}
+  </div>
+  ${(rendus[ongletDev] || devQuestions)()}`;
+};
+
+
+/* ---------------------------------------------------------------------
+   8. TRANCHE D'AGE ET NIVEAU D'ETUDES
+   On demande une tranche, pas une date de naissance : c'est suffisant pour
+   adapter les fiches, et ca evite de conserver une donnee qui identifie
+   precisement un mineur.
+   --------------------------------------------------------------------- */
+
+const TRANCHES = [
+  ["18-20", "18 à 20 ans"],
+  ["21-24", "21 à 24 ans"],
+  ["25-29", "25 à 29 ans"],
+  ["30+",   "30 ans et plus"]
+];
+
+const NIVEAUX = [
+  "PASS / LAS", "Licence 1", "Licence 2", "Licence 3", "Master",
+  "IFSI / paramédical", "BTS / DUT", "Reconversion", "Autre"
+];
+
+const libelleTranche = v => (TRANCHES.find(t => t[0] === v) || [null,"non renseigné"])[1];
+
+function optionsTranche(actuelle){
+  return `<option value="">— choisis —</option>` +
+    TRANCHES.map(([v,n]) => `<option value="${v}" ${actuelle===v?"selected":""}>${n}</option>`).join("");
+}
+function optionsNiveau(actuel){
+  return `<option value="">— non précisé —</option>` +
+    NIVEAUX.map(n => `<option value="${esc(n)}" ${actuel===n?"selected":""}>${esc(n)}</option>`).join("");
+}
+
+/* Champs ajoutés au formulaire d'inscription, qui est en dur dans la page */
+(function ajouterChampsInscription(){
+  const form = document.getElementById("form-inscription");
+  if(!form) return;
+  const bouton = form.querySelector('button[type="submit"]');
+  if(!bouton) return;
+  bouton.insertAdjacentHTML("beforebegin", `
+    <div class="rang" style="gap:12px">
+      <div class="champ" style="flex:1">
+        <label for="i-age">Tranche d'âge</label>
+        <select id="i-age" required>${optionsTranche("")}</select>
+      </div>
+      <div class="champ" style="flex:1">
+        <label for="i-niveau">Niveau d'études</label>
+        <select id="i-niveau">${optionsNiveau("")}</select>
+      </div>
+    </div>
+    <p class="tiny muted" style="margin:-4px 0 12px;line-height:1.5">
+      Sert uniquement à adapter le contenu des fiches. Jamais affiché aux autres élèves.
+    </p>
+    <label class="rang small" style="gap:9px;align-items:flex-start;margin-bottom:14px;line-height:1.5">
+      <input type="checkbox" id="i-majeur" required style="width:auto;margin-top:3px">
+      <span>Je certifie avoir 18 ans ou plus. Le site n'est pas ouvert aux mineurs.</span>
+    </label>`);
+})();
+
+/* On laisse l'inscription d'origine faire son travail, puis on complète */
+const _inscrireOrigine = Auth.inscrire.bind(Auth);
+Auth.inscrire = async function(e){
+  const age = (($("#i-age") || {}).value || "").trim();
+  const niveau = (($("#i-niveau") || {}).value || "").trim();
+  const majeur = (($("#i-majeur") || {}).checked) === true;
+
+  // le site n'accueille pas de mineurs : on bloque avant toute creation
+  if(!majeur || !age){
+    e.preventDefault();
+    return toast("L'inscription est réservée aux personnes majeures.","ko");
+  }
+
+  await _inscrireOrigine(e);
+  if(U && age){
+    U.age = age;
+    if(niveau) U.niveau = niveau;
+    sauver();
+  }
+};
+
+/* Renseigner ou corriger depuis le profil : les comptes créés avant
+   cette version n'ont rien, sinon ils resteraient hors des statistiques. */
+function modaleAge(){
+  modale(`
+    <p class="eyebrow">Profil</p>
+    <h2 style="margin:8px 0 10px">Ton profil d'étude</h2>
+    <p class="small muted" style="margin-bottom:18px">
+      Ces informations servent à adapter les fiches au niveau des élèves. Elles ne sont
+      visibles que de toi et de l'équipe du site.
+    </p>
+    <form onsubmit="sauverAge(event)">
+      <div class="champ"><label for="pa-age">Tranche d'âge</label>
+        <select id="pa-age" required>${optionsTranche(U.age || "")}</select></div>
+      <div class="champ"><label for="pa-niveau">Niveau d'études</label>
+        <select id="pa-niveau">${optionsNiveau(U.niveau || "")}</select></div>
+      <button class="btn primaire large" type="submit">Enregistrer</button>
+      <button class="btn fantome" type="button" style="width:100%;margin-top:8px" onclick="fermerModale()">Annuler</button>
+    </form>`);
+}
+
+function sauverAge(e){
+  e.preventDefault();
+  U.age = $("#pa-age").value;
+  const n = $("#pa-niveau").value;
+  if(n) U.niveau = n; else delete U.niveau;
+  sauver(); fermerModale();
+  toast("Profil mis à jour.","ok");
+  App.aller("profil");
+}
+
+const _vueProfilOrigine = vueProfil;
+vueProfil = function(){
+  let html = _vueProfilOrigine();
+  const ligne = `<tr><td class="muted">Âge et niveau</td><td>
+      ${U.age ? esc(libelleTranche(U.age)) : '<span class="pastille or">à renseigner</span>'}
+      ${U.niveau ? " · " + esc(U.niveau) : ""}
+      <button class="btn mini fantome" style="margin-left:6px" onclick="modaleAge()">${U.age ? "Modifier" : "Renseigner"}</button>
+    </td></tr>`;
+  return html.replace('<tr><td class="muted">Inscription</td>', ligne + '<tr><td class="muted">Inscription</td>');
+};
+
+/* Répartition affichée en tête de l'onglet Utilisateurs */
+function repartition(champ, entrees){
+  const total = DB.users.length || 1;
+  const compte = {};
+  DB.users.forEach(u => {
+    const v = u[champ] || "";
+    compte[v] = (compte[v] || 0) + 1;
+  });
+  const lignes = entrees.map(([v, n]) => [n, compte[v] || 0]);
+  const manquants = compte[""] || 0;
+  if(manquants) lignes.push(["Non renseigné", manquants]);
+
+  return lignes.map(([nom, nb]) => {
+    const pct = Math.round(nb / total * 100);
+    return `<div style="margin-bottom:11px">
+      <div class="entre" style="margin-bottom:5px">
+        <span class="small">${esc(nom)}</span>
+        <span class="small muted">${nb} · ${pct}%</span>
+      </div>
+      <div class="barre"><span style="width:${pct}%"></span></div>
+    </div>`;
+  }).join("");
+}
+
+const _devUsersOrigine = devUsers;
+devUsers = function(){
+  const renseignes = DB.users.filter(u => u.age).length;
+  const bloc = `
+  <div class="grille g2" style="margin-bottom:20px">
+    <article class="carte">
+      <p class="eyebrow" style="margin-bottom:14px">Répartition par âge</p>
+      ${repartition("age", TRANCHES)}
+      <p class="tiny muted" style="margin-top:10px;line-height:1.5">
+        ${renseignes} compte${renseignes>1?"s":""} sur ${DB.users.length} ${renseignes>1?"ont":"a"} renseigné sa tranche.
+        ${renseignes < DB.users.length ? "Les comptes créés avant l'ajout de ce champ peuvent le compléter depuis leur profil." : ""}
+      </p>
+    </article>
+    <article class="carte">
+      <p class="eyebrow" style="margin-bottom:14px">Répartition par niveau</p>
+      ${repartition("niveau", NIVEAUX.map(n => [n, n]))}
+    </article>
+  </div>`;
+  return bloc + _devUsersOrigine();
+};
+
+
+/* ---------------------------------------------------------------------
+   9. FICHIERS PROTEGES PAR FIREBASE STORAGE
+   L'adresse de telechargement classique de Firebase porte un jeton
+   permanent et reste publique : elle ne verifie aucune regle. On demande
+   donc le fichier avec le jeton d'identite de l'utilisateur, ce qui fait
+   reellement appliquer les regles Storage, puis on l'ouvre depuis la
+   memoire du navigateur.
+   Un chemin ecrit « storage:livres/liv-01.pdf » passe par ce canal ;
+   un chemin ordinaire reste servi publiquement, comme avant.
+   --------------------------------------------------------------------- */
+
+const PREFIXE_PROTEGE = "storage:";
+const estProtege = c => typeof c === "string" && c.startsWith(PREFIXE_PROTEGE);
+
+const CacheFichiers = {};      // chemin -> URL locale, valable le temps de la session
+
+async function urlProtegee(chemin){
+  const cle = chemin.slice(PREFIXE_PROTEGE.length);
+  if(CacheFichiers[cle]) return CacheFichiers[cle];
+
+  if(!MODE_CLOUD || !fauth.currentUser) throw new Error("connexion requise");
+  const jeton = await fauth.currentUser.getIdToken();
+  const bucket = CONFIG_FIREBASE.storageBucket;
+  const adresse = "https://firebasestorage.googleapis.com/v0/b/" + bucket
+                + "/o/" + encodeURIComponent(cle) + "?alt=media";
+
+  const r = await fetch(adresse, { headers: { Authorization: "Firebase " + jeton } });
+
+  if(r.status === 403) throw new Error("cet ouvrage n'est pas dans ta bibliothèque");
+  if(r.status === 404) throw new Error("fichier introuvable sur le serveur");
+  if(!r.ok) throw new Error("téléchargement refusé (" + r.status + ")");
+
+  const url = URL.createObjectURL(await r.blob());
+  CacheFichiers[cle] = url;
+  return url;
+}
+
+/* Ouverture d'un ouvrage : on intercepte les chemins protégés,
+   le reste continue de passer par le code d'origine. */
+const _telechargerLivreOrigine = telechargerLivre;
+telechargerLivre = async function(id){
+  const l = DB.livres.find(x => x.id === id);
+  if(!l || !estProtege(l.pdf)) return _telechargerLivreOrigine(id);
+
+  if(!possede(id)) return toast("Cet ouvrage n'est pas dans ta bibliothèque.","ko");
+
+  toast("Préparation du document…");
+  try{
+    const url = await urlProtegee(l.pdf);
+    tracer("PDF ouvert : " + l.titre); sauver();
+    window.open(url, "_blank", "noopener");
+  }catch(e){
+    toast("Ouverture impossible : " + e.message, "ko");
+  }
+};
+
+/* Une fiche dont le PDF est protégé : on résout l'adresse après le rendu,
+   puis on remplace la source du lecteur et des deux boutons. */
+const _ouvrirFicheAvantStorage = ouvrirFiche;
+ouvrirFiche = function(id){
+  _ouvrirFicheAvantStorage(id);
+  const f = DB.fiches.find(x => x.id === id);
+  if(!f || !estProtege(f.pdf)) return;
+
+  const cadre = document.querySelector("#zone .visionneuse iframe");
+  const liens = document.querySelectorAll("#zone .visionneuse a");
+  if(cadre) cadre.removeAttribute("src");
+  liens.forEach(a => a.removeAttribute("href"));
+
+  urlProtegee(f.pdf).then(url => {
+    if(cadre) cadre.src = url + "#view=FitH";
+    liens.forEach(a => { a.href = url; });
+  }).catch(e => {
+    const z = document.querySelector("#zone .visionneuse .tiny");
+    if(z) z.textContent = "Document indisponible : " + e.message;
+  });
+};
+
+/* L'extraction du QCM doit aussi savoir lire un PDF protégé */
+const _extraireDuPdfOrigine = extraireDuPdf;
+extraireDuPdf = async function(ficheId){
+  const f = DB.fiches.find(x => x.id === ficheId);
+  if(f && estProtege(f.pdf)){
+    try{
+      const url = await urlProtegee(f.pdf);
+      const copie = Object.assign({}, f, { pdf: url });
+      const i = DB.fiches.indexOf(f);
+      DB.fiches[i] = copie;                 // le temps de l'extraction
+      await _extraireDuPdfOrigine(ficheId);
+      DB.fiches[i] = f;
+      return;
+    }catch(e){
+      return toast("Lecture impossible : " + e.message, "ko");
+    }
+  }
+  return _extraireDuPdfOrigine(ficheId);
+};
+
+/* Rappel dans le formulaire d'édition, pour ne pas avoir à retenir la syntaxe */
+const _editLivreOrigine = editLivre;
+editLivre = function(id){
+  _editLivreOrigine(id);
+  const champ = document.getElementById("l-pdf");
+  if(!champ) return;
+  champ.closest(".champ").insertAdjacentHTML("beforeend", `
+    <p class="tiny muted" style="margin-top:7px;line-height:1.55">
+      Pour un ouvrage <b>payant</b>, dépose-le dans Firebase Storage sous
+      <code style="font-family:var(--mono);color:var(--bleu)">livres/</code>
+      et écris ici
+      <code style="font-family:var(--mono);color:var(--bleu)">storage:livres/${esc(id || "liv-01")}.pdf</code>.
+      Le fichier n'est alors téléchargeable que par les comptes qui y ont droit.
+    </p>`);
+};
+
+
+/* ---------------------------------------------------------------------
+   10. OUVRAGES VENDUS AILLEURS
+   Un livre peut porter un lien externe, Amazon par exemple. Dans ce cas la
+   boutique renvoie vers ce lien au lieu de declencher un paiement, et
+   l'ouvrage ne rejoint pas la bibliotheque : le fichier n'est pas chez nous.
+   Les livres sans lien gardent le parcours Stripe complet.
+   --------------------------------------------------------------------- */
+
+/* Champ ajoute au formulaire d'edition */
+const _editLivreAvantLien = editLivre;
+editLivre = function(id){
+  _editLivreAvantLien(id);
+  const champ = document.getElementById("l-pdf");
+  if(!champ) return;
+  const l = id ? DB.livres.find(x => x.id === id) : {};
+  champ.closest(".champ").insertAdjacentHTML("afterend", `
+    <div class="champ">
+      <label>Vendu ailleurs — lien externe (facultatif)</label>
+      <input id="l-lien" value="${esc((l && l.lien) || "")}" placeholder="https://www.amazon.fr/dp/…">
+      <p class="tiny muted" style="margin-top:7px;line-height:1.55">
+        Si ce champ est rempli, la boutique affiche « Voir sur Amazon » et n'encaisse rien :
+        la vente se fait là-bas. L'ouvrage n'apparaît alors pas dans la bibliothèque.
+        Laisse vide pour vendre directement sur le site par Stripe.
+      </p>
+    </div>`);
+};
+
+/* Enregistrement : on reprend le comportement d'origine en ajoutant le lien */
+sauverLivre = function(e, id){
+  e.preventDefault();
+  const d = {
+    titre: $("#l-t").value.trim(), soustitre: $("#l-st").value.trim(),
+    prix: +$("#l-p").value, pages: +$("#l-pg").value,
+    m: $("#l-m").value, c1: $("#l-c1").value.trim(), c2: $("#l-c2").value.trim(),
+    desc: $("#l-d").value.trim(), pdf: $("#l-pdf").value.trim(),
+    lien: (($("#l-lien") || {}).value || "").trim(),
+    sommaire: $("#l-s").value.split("\n").map(s => s.trim()).filter(Boolean)
+  };
+  if(d.lien && !/^https?:\/\//i.test(d.lien))
+    return toast("Le lien doit commencer par https://","ko");
+
+  if(id) Object.assign(DB.livres.find(x => x.id === id), d);
+  else DB.livres.push(Object.assign({ id: uid("liv") }, d));
+
+  sauverContenu()
+    .then(() => { fermerModale(); toast(id ? "Livre mis à jour." : "Livre ajouté.","ok"); App.aller("dev"); })
+    .catch(err => toast("Publication impossible : " + err.message,"ko"));
+};
+
+/* Boutique : le bouton d'achat devient un renvoi vers le vendeur */
+const _vueBoutiqueOrigine = vueBoutique;
+vueBoutique = function(){
+  let html = _vueBoutiqueOrigine();
+  DB.livres.filter(l => l.lien).forEach(l => {
+    const externe = `<a class="btn primaire mini" href="${esc(SWA_SECURITY.url(l.lien))}" target="_blank" rel="noopener">Voir sur Amazon</a>`;
+    html = html
+      .replace(`<button class="btn primaire mini" onclick="paiement('livre',${jsArg(l.id)},${l.prix})">Acheter</button>`, externe)
+      .replace(`<button class="btn mini" onclick="telechargerLivre(${jsArg(l.id)})">Télécharger</button>`, externe);
+  });
+  return html;
+};
+
+/* Bibliothèque : un ouvrage vendu ailleurs n'y a pas sa place */
+const _vueBibliothequeOrigine = vueBibliotheque;
+vueBibliotheque = function(){
+  const tous = DB.livres;
+  DB.livres = tous.filter(l => !l.lien);
+  try{ return _vueBibliothequeOrigine(); }
+  finally{ DB.livres = tous; }
+};
+
+/* Filet de sécurité : si un lien externe existe, aucun paiement ne part */
+const _paiementOrigine = paiement;
+paiement = function(type, ref, prix){
+  if(type === "livre"){
+    const l = DB.livres.find(x => x.id === ref);
+    if(l && l.lien){
+      window.open(SWA_SECURITY.url(l.lien), "_blank", "noopener");
+      return;
+    }
+  }
+  return _paiementOrigine(type, ref, prix);
+};
+
+/* Repère dans la console : on voit d'un coup d'œil ce qui part chez Amazon */
+const _devLivresOrigine = devLivres;
+devLivres = function(){
+  let html = _devLivresOrigine();
+  DB.livres.filter(l => l.lien).forEach(l => {
+    html = html.replace(
+      `<span class="prix grad-txt" style="font-size:20px">${l.prix} €</span>`,
+      `<span class="prix grad-txt" style="font-size:20px">${l.prix} €</span>
+       <span class="pastille or">Amazon</span>`);
+  });
+  return html;
+};
+
+
+/* ---------------------------------------------------------------------
+   11. ETAT DE L'ABONNEMENT APRES RESILIATION
+   Quand un client annule, Stripe laisse l'abonnement actif jusqu'a la fin
+   de la periode deja payee. Sans precision, la boutique continue
+   d'annoncer « prochain renouvellement », ce qui laisse croire a un
+   prelevement a venir. Le webhook renseigne desormais abo.renouvelle.
+   --------------------------------------------------------------------- */
+
+const seraReconduit = () => {
+  const a = monAbo();
+  return !a || a.renouvelle !== false;
+};
+
+const _vueBoutiqueAvantResil = vueBoutique;
+vueBoutique = function(){
+  let html = _vueBoutiqueAvantResil();
+  const a = monAbo();
+  if(!a || !aboActif(U) || seraReconduit()) return html;
+
+  // l'abonnement court encore mais ne sera pas reconduit
+  html = html
+    .replace("Prochain renouvellement le ", "Accès maintenu jusqu'au ")
+    .replace('<span class="pastille vert">Abonnement actif</span>',
+             '<span class="pastille or">Résiliation enregistrée</span>')
+    .replace(">Gérer ou résilier</button>", ">Reprendre l'abonnement</button>");
+
+  const rappel = `<p class="tiny muted" style="margin-top:10px;line-height:1.55">
+      Aucun prélèvement ne suivra. Tu gardes l'accès complet jusqu'à cette date,
+      puis le compte repasse en gratuit. Tu peux reprendre à tout moment.</p>`;
+  html = html.replace(` jours restants</p>`, ` jours restants</p>${rappel}`);
+  return html;
+};
+
+/* Même précision sur la fiche de profil */
+const _vueProfilAvantResil = vueProfil;
+vueProfil = function(){
+  let html = _vueProfilAvantResil();
+  if(monAbo() && !seraReconduit()){
+    html = html.replace('<tr><td class="muted">Échéance</td>',
+      '<tr><td class="muted">Reconduction</td><td><span class="pastille or">résiliée</span></td></tr>' +
+      '<tr><td class="muted">Fin d\'accès</td>');
+  }
+  return html;
+};
+
+/* Le libellé du plan, visible dans le menu de gauche */
+const _libellePlanOrigine = libellePlan;
+libellePlan = function(u){
+  const base = _libellePlanOrigine(u);
+  if(u && U && u.id !== U.id) return base;
+  if(monAbo() && aboActif(U) && !seraReconduit()) return base + " · non reconduit";
+  return base;
+};
+
+
+/* ---------------------------------------------------------------------
+   12. PAGES LEGALES
+   Accessibles sans compte, par une adresse propre : #mentions, #cgv,
+   #confidentialite. Elles doivent rester consultables par un visiteur non
+   inscrit, c'est une obligation, et Stripe reclame ces liens pour le
+   portail client.
+   Les elements a completer sont surlignes : impossible de les oublier.
+   --------------------------------------------------------------------- */
+
+function avisBrouillon(){
+  const manquants = CHAMPS_LEGAUX.filter(c => !((DB.legal || {})[c[0]] || "").trim());
+  if(!manquants.length) return "";
+  return `<div class="encadre" style="margin-bottom:26px">
+    <b>Document non finalisé.</b> ${manquants.length} élément${manquants.length>1?"s":""}
+    reste${manquants.length>1?"nt":""} à compléter avant toute mise en vente.
+    Cela se fait depuis la console développeur, onglet « Légal ».</div>`;
+}
+
+/* Les coordonnées sont saisies dans la console, pas dans le code : elles
+   changent quand le statut juridique évolue, et personne ne devrait avoir
+   à modifier un fichier pour ça. */
+const CHAMPS_LEGAUX = [
+  ["nom",       "Nom et prénom de l'éditrice", "[PRÉNOM NOM]",           "Marie Dupont"],
+  ["adresse",   "Adresse postale complète",    "[ADRESSE COMPLÈTE]",     "12 rue des Écoles, 34000 Montpellier"],
+  ["siret",     "Numéro SIRET",                "[SIRET]",                "123 456 789 00012"],
+  ["contact",   "Adresse électronique",        "[ADRESSE DE CONTACT]",   "contact@studywithaaly.fr"],
+  ["mediateur", "Médiateur de la consommation","[MÉDIATEUR]",            "Nom, adresse et site du médiateur"]
+];
+
+function champLegal(cle, gabarit){
+  const v = ((DB.legal || {})[cle] || "").trim();
+  if(v) return esc(v);
+  return `<span style="background:rgba(251,191,36,.16);border:1px solid rgba(251,191,36,.45);color:var(--ambre);padding:1px 7px;border-radius:6px;font-size:13.5px;font-weight:640;white-space:nowrap">${esc(gabarit)}</span>`;
+}
+
+
+const LEGAL = {
+  mentions: {
+    titre: "Mentions légales",
+    corps: () => `
+      ${avisBrouillon()}
+      <section class="bloc-fiche"><h3>Éditeur du site</h3>
+        <p style="color:#DCD5F5;line-height:1.7;margin-bottom:12px">Studywithaaly est édité par ${champLegal("nom","[PRÉNOM NOM]")}, entrepreneur individuel.</p>
+        <ul>
+          <li>Adresse : ${champLegal("adresse","[ADRESSE COMPLÈTE]")}</li>
+          <li>SIRET : ${champLegal("siret","[SIRET]")}</li>
+          <li>Adresse électronique : ${champLegal("contact","[ADRESSE DE CONTACT]")}</li>
+          <li>Directrice de la publication : ${champLegal("nom","[PRÉNOM NOM]")}</li>
+        </ul></section>
+      <section class="bloc-fiche"><h3>Hébergement</h3>
+        <ul>
+          <li><b>Netlify, Inc.</b> — 512 2nd Street, Suite 200, San Francisco, CA 94107, États-Unis</li>
+          <li><b>Google Ireland Limited</b> (Firebase) — Gordon House, Barrow Street, Dublin 4, Irlande, pour les comptes et les contenus</li>
+        </ul></section>
+      <section class="bloc-fiche"><h3>Propriété intellectuelle</h3>
+        <ul>
+          <li>L'ensemble des contenus pédagogiques — fiches, questions, illustrations, ouvrages — est la propriété exclusive de l'éditrice.</li>
+          <li>Toute reproduction, diffusion ou revente, totale ou partielle, sans autorisation écrite, est interdite.</li>
+          <li>L'accès souscrit est strictement personnel. Le partage d'identifiants entraîne la suspension du compte sans remboursement.</li>
+        </ul></section>`
+  },
+
+  cgv: {
+    titre: "Conditions générales de vente",
+    corps: () => `
+      ${avisBrouillon()}
+      <section class="bloc-fiche"><h3>Article 1 — Objet</h3><ul>
+        <li>Les présentes conditions régissent la vente d'abonnements et de contenus pédagogiques numériques proposés sur studywithaaly.fr par ${champLegal("nom","[PRÉNOM NOM]")}, ci-après « l'éditrice », à toute personne physique majeure agissant en qualité de consommateur, ci-après « le client ».</li>
+      </ul></section>
+      <section class="bloc-fiche"><h3>Article 2 — Accès au service</h3><ul>
+        <li>Le service est réservé aux personnes âgées de dix-huit ans révolus. Le client le certifie lors de la création de son compte.</li>
+        <li>L'éditrice se réserve le droit de suspendre tout compte dont le titulaire s'avérerait mineur.</li>
+      </ul></section>
+      <section class="bloc-fiche"><h3>Article 3 — Description des offres</h3><ul>
+        <li><b>Abonnement mensuel</b> : 5 € par mois, reconduit tacitement.</li>
+        <li><b>Abonnement annuel</b> : 50 € par an, reconduit tacitement.</li>
+        <li>L'abonnement donne accès à l'ensemble des fiches, quiz et flashcards pendant sa durée de validité, y compris aux contenus ajoutés en cours d'abonnement.</li>
+        <li>Certains ouvrages sont vendus séparément et peuvent être proposés par l'intermédiaire de plateformes tierces, auquel cas les conditions du vendeur concerné s'appliquent.</li>
+      </ul></section>
+      <section class="bloc-fiche"><h3>Article 4 — Prix et paiement</h3><ul>
+        <li>Les prix sont indiqués en euros toutes taxes comprises. TVA non applicable, article 293 B du code général des impôts.</li>
+        <li>Le paiement s'effectue par carte bancaire via le prestataire Stripe. L'éditrice n'a accès à aucune donnée bancaire.</li>
+      </ul></section>
+      <section class="bloc-fiche"><h3>Article 5 — Reconduction et résiliation</h3><ul>
+        <li>L'abonnement est reconduit tacitement à chaque échéance. Conformément à l'article L215-1 du code de la consommation, le client est informé par courrier électronique de la possibilité de ne pas reconduire, au plus tôt trois mois et au plus tard un mois avant le terme de la période en cours.</li>
+        <li>Le client peut résilier à tout moment depuis son espace personnel.</li>
+        <li>La résiliation prend effet au terme de la période déjà réglée : l'accès est maintenu jusqu'à cette date, et aucun prélèvement ultérieur n'intervient. Aucun remboursement au prorata n'est effectué.</li>
+      </ul></section>
+      <section class="bloc-fiche"><h3>Article 6 — Droit de rétractation</h3><ul>
+        <li>Conformément à l'article L221-18 du code de la consommation, le client dispose d'un délai de quatorze jours pour se rétracter.</li>
+        <li>Toutefois, en application de l'article L221-28 13° du même code, ce droit ne peut être exercé lorsque l'exécution du contrat a commencé après accord préalable exprès du consommateur et renoncement explicite à son droit de rétractation.</li>
+        <li>En validant sa commande, le client demande expressément l'accès immédiat au contenu numérique et reconnaît perdre de ce fait son droit de rétractation.</li>
+      </ul></section>
+      <section class="bloc-fiche"><h3>Article 7 — Disponibilité</h3><ul>
+        <li>L'éditrice s'efforce d'assurer l'accessibilité du service en continu, sans garantie de résultat.</li>
+        <li>En cas d'indisponibilité prolongée qui lui serait imputable, la durée de l'abonnement est prolongée d'autant.</li>
+      </ul></section>
+      <section class="bloc-fiche"><h3>Article 8 — Garanties légales</h3><ul>
+        <li>Le client bénéficie de la garantie légale de conformité des contenus numériques prévue aux articles L224-25-12 et suivants du code de la consommation.</li>
+      </ul></section>
+      <section class="bloc-fiche"><h3>Article 9 — Données personnelles</h3><ul>
+        <li>Le traitement des données est décrit dans la <a href="#confidentialite">politique de confidentialité</a>, qui fait partie intégrante des présentes conditions.</li>
+      </ul></section>
+      <section class="bloc-fiche"><h3>Article 10 — Médiation</h3><ul>
+        <li>Conformément à l'article L612-1 du code de la consommation, le client peut recourir gratuitement au médiateur de la consommation suivant : ${champLegal("mediateur","[MÉDIATEUR]")}</li>
+        <li>Le client peut également saisir la plateforme européenne de règlement en ligne des litiges : <a href="https://ec.europa.eu/consumers/odr" target="_blank" rel="noopener">ec.europa.eu/consumers/odr</a></li>
+      </ul></section>
+      <section class="bloc-fiche"><h3>Article 11 — Droit applicable</h3><ul>
+        <li>Les présentes conditions sont soumises au droit français.</li>
+      </ul></section>`
+  },
+
+  confidentialite: {
+    titre: "Politique de confidentialité",
+    corps: () => `
+      ${avisBrouillon()}
+      <section class="bloc-fiche"><h3>Responsable du traitement</h3><ul>
+        <li>${champLegal("nom","[PRÉNOM NOM]")}, entrepreneur individuel, ${champLegal("adresse","[ADRESSE]")}</li>
+        <li>Contact : ${champLegal("contact","[ADRESSE DE CONTACT]")}</li>
+      </ul></section>
+      <section class="bloc-fiche"><h3>Données collectées</h3><ul>
+        <li><b>À la création du compte</b> : prénom, adresse électronique, mot de passe sous forme chiffrée, tranche d'âge, niveau d'études.</li>
+        <li><b>À l'usage du service</b> : fiches consultées, résultats de quiz et de flashcards, notes personnelles, historique d'activité.</li>
+        <li><b>En cas d'achat</b> : identifiant de client Stripe, formule souscrite, dates de début et de fin, historique des achats. Aucune donnée bancaire n'est collectée ni conservée par l'éditrice.</li>
+      </ul></section>
+      <section class="bloc-fiche"><h3>Finalités et bases légales</h3><ul>
+        <li>Fournir le service et gérer le compte — exécution du contrat</li>
+        <li>Gérer les abonnements et les paiements — exécution du contrat</li>
+        <li>Adapter le contenu pédagogique, à partir de données agrégées — intérêt légitime</li>
+        <li>Respecter les obligations comptables — obligation légale</li>
+        <li>Aucune donnée n'est utilisée à des fins publicitaires, ni cédée, ni revendue.</li>
+      </ul></section>
+      <section class="bloc-fiche"><h3>Destinataires</h3><ul>
+        <li><b>Google Ireland Limited</b> — hébergement des comptes et des contenus</li>
+        <li><b>Stripe Payments Europe Ltd</b> — traitement des paiements</li>
+        <li><b>Netlify Inc.</b> — hébergement du site</li>
+        <li>Ces prestataires peuvent traiter des données hors de l'Union européenne, dans le cadre des garanties contractuelles prévues par le RGPD.</li>
+      </ul></section>
+      <section class="bloc-fiche"><h3>Notes personnelles</h3><ul>
+        <li>Les notes rédigées sur les fiches sont strictement privées. Elles ne sont accessibles qu'à leur auteur, ne sont ni consultées ni analysées par l'éditrice, et sont supprimées avec le compte.</li>
+      </ul></section>
+      <section class="bloc-fiche"><h3>Durée de conservation</h3><ul>
+        <li>Les données du compte sont conservées tant que le compte existe, puis pendant douze mois après sa suppression.</li>
+        <li>Les documents comptables sont conservés dix ans conformément à la loi.</li>
+      </ul></section>
+      <section class="bloc-fiche"><h3>Droits du client</h3><ul>
+        <li>Le client dispose d'un droit d'accès, de rectification, d'effacement, de limitation, d'opposition et de portabilité. Ces droits s'exercent à ${champLegal("contact","[ADRESSE DE CONTACT]")}.</li>
+        <li>Une réclamation peut être adressée à la CNIL, 3 place de Fontenoy, 75007 Paris, <a href="https://www.cnil.fr" target="_blank" rel="noopener">cnil.fr</a>.</li>
+      </ul></section>
+      <section class="bloc-fiche"><h3>Cookies</h3><ul>
+        <li>Le site ne dépose aucun cookie publicitaire ni de mesure d'audience.</li>
+        <li>Le maintien de la session utilise le stockage local du navigateur, strictement nécessaire au fonctionnement, et ne requiert pas de consentement.</li>
+      </ul></section>`
+  }
+};
+
+function afficherLegal(cle){
+  const doc = LEGAL[cle];
+  if(!doc) return fermerLegal();
+
+  let vue = document.getElementById("vue-legal");
+  if(!vue){
+    vue = document.createElement("div");
+    vue.id = "vue-legal";
+    document.body.appendChild(vue);
+  }
+  document.getElementById("vue-auth").classList.add("hidden");
+  document.getElementById("vue-app").classList.add("hidden");
+  vue.classList.remove("hidden");
+
+  vue.innerHTML = `
+    <div class="zone" style="max-width:820px;margin:0 auto">
+      <div class="rang" style="gap:11px;margin-bottom:28px">
+        <div class="noyau" style="width:34px;height:34px;border-radius:10px;background:var(--grad);display:grid;place-items:center">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round"><circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="10" r="2.4"/><circle cx="9" cy="18" r="2.4"/><path d="M8 7l8 2M8.4 16.2l8-4.6"/></svg>
+        </div>
+        <span style="font-size:19px;font-weight:800;letter-spacing:-.03em">Studywithaaly</span>
+      </div>
+      <button class="btn fantome mini" onclick="fermerLegal()" style="margin-bottom:20px">← Retour au site</button>
+      <article class="lecteur">
+        <h1 style="margin-bottom:8px">${esc(doc.titre)}</h1>
+        <p class="tiny muted" style="margin-bottom:26px">Dernière mise à jour : ${(DB.legal && DB.legal.maj) ? jour(DB.legal.maj) : "document non finalisé"}</p>
+        ${doc.corps()}
+        <div class="rang" style="gap:16px;margin-top:38px;padding-top:20px;border-top:1px solid var(--bord)">
+          <a href="#mentions" class="small">Mentions légales</a>
+          <a href="#cgv" class="small">CGV</a>
+          <a href="#confidentialite" class="small">Confidentialité</a>
+        </div>
+      </article>
+    </div>`;
+  window.scrollTo({ top:0 });
+}
+
+function fermerLegal(){
+  const vue = document.getElementById("vue-legal");
+  if(vue) vue.classList.add("hidden");
+  if(location.hash) history.replaceState({}, "", location.pathname);
+  // on rend la main à l'écran qui convient
+  if(U) document.getElementById("vue-app").classList.remove("hidden");
+  else document.getElementById("vue-auth").classList.remove("hidden");
+}
+
+function routeLegale(){
+  const cle = (location.hash || "").replace("#", "");
+  if(LEGAL[cle]) afficherLegal(cle);
+  else{
+    const vue = document.getElementById("vue-legal");
+    if(vue && !vue.classList.contains("hidden")) fermerLegal();
+  }
+}
+
+window.addEventListener("hashchange", routeLegale);
+routeLegale();     // au chargement, si l'adresse porte déjà une ancre
+
+
+/* ---------------------------------------------------------------------
+   13. ONGLET LEGAL DANS LA CONSOLE
+   Les coordonnees de l'editrice sont rangees dans DB.legal, publie avec le
+   reste du contenu. Elles alimentent les trois documents legaux, qui se
+   completent tout seuls des que les champs sont remplis.
+   --------------------------------------------------------------------- */
+
+/* On republie desormais DB.legal avec le contenu partage */
+sauverContenu = async function(){
+  if(!MODE_CLOUD){ Store.ecrire(DB); return; }
+  const paquet = {
+    matieres: DB.matieres, fiches: DB.fiches,
+    questions: DB.questions, livres: DB.livres,
+    legal: DB.legal || {}
+  };
+  const taille = JSON.stringify(paquet).length;
+  if(taille > 950000)
+    throw new Error("le contenu dépasse la taille maximale d'un document (" +
+      Math.round(taille/1024) + " Ko sur 1024). Allège des fiches ou réimporte en plusieurs fois.");
+  await fdb.collection("contenu").doc("base").set(paquet);
+  await fdb.collection("contenu").doc("meta").set({ initialise:true }, { merge:true });
+};
+
+function devLegal(){
+  const L = DB.legal || {};
+  const manquants = CHAMPS_LEGAUX.filter(c => !((L[c[0]]) || "").trim()).length;
+
+  return `
+  <div class="carte ${manquants ? "" : "lueur"}" style="margin-bottom:20px;border-color:${manquants ? "rgba(251,191,36,.4)" : "rgba(52,211,153,.4)"}">
+    <div class="entre">
+      <div>
+        <span class="pastille ${manquants ? "or" : "vert"}">${manquants ? manquants + " champ" + (manquants>1?"s":"") + " manquant" + (manquants>1?"s":"") : "Documents complets"}</span>
+        <h3 style="margin:9px 0 4px">Coordonnées légales</h3>
+        <p class="small muted" style="max-width:640px;line-height:1.6">
+          Ces informations alimentent les mentions légales, les conditions générales
+          de vente et la politique de confidentialité. Tant qu'un champ est vide,
+          il apparaît surligné dans les documents et un avertissement s'affiche en
+          tête de page.
+        </p>
+      </div>
+      ${L.maj ? `<span class="tiny muted">Mise à jour le ${jour(L.maj)}</span>` : ""}
+    </div>
+  </div>
+
+  <div class="carte">
+    <form onsubmit="sauverLegal(event)">
+      ${CHAMPS_LEGAUX.map(([cle, libelle, gabarit, exemple]) => `
+        <div class="champ">
+          <label for="lg-${cle}">${esc(libelle)}</label>
+          ${cle === "mediateur" || cle === "adresse"
+            ? `<textarea id="lg-${cle}" style="min-height:64px" placeholder="${esc(exemple)}">${esc(L[cle] || "")}</textarea>`
+            : `<input id="lg-${cle}" value="${esc(L[cle] || "")}" placeholder="${esc(exemple)}">`}
+        </div>`).join("")}
+
+      <div class="encadre" style="margin:18px 0">
+        <b>Le médiateur de la consommation</b> est une obligation légale pour toute
+        vente à des particuliers. L'adhésion coûte quelques dizaines d'euros par an.
+        La liste des organismes agréés est publiée par la Commission d'évaluation et
+        de contrôle de la médiation de la consommation.
+      </div>
+
+      <button class="btn primaire large" type="submit">Enregistrer et publier</button>
+    </form>
+  </div>
+
+  <div class="grille g3" style="margin-top:18px">
+    ${[["mentions","Mentions légales"],["cgv","Conditions générales"],["confidentialite","Politique de confidentialité"]]
+      .map(([k,n]) => `<article class="carte" style="padding:16px">
+        <h3 style="font-size:15px">${n}</h3>
+        <button class="btn mini fantome" style="margin-top:10px" onclick="afficherLegal(${jsArg(k)})">Relire le document</button>
+      </article>`).join("")}
+  </div>`;
+}
+
+function sauverLegal(e){
+  e.preventDefault();
+  const avant = Object.assign({}, DB.legal || {});
+  const L = {};
+  CHAMPS_LEGAUX.forEach(([cle]) => {
+    const el = document.getElementById("lg-" + cle);
+    L[cle] = el ? el.value.trim() : "";
+  });
+  L.maj = Date.now();
+  DB.legal = L;
+
+  sauverContenu()
+    .then(() => {
+      const restants = CHAMPS_LEGAUX.filter(c => !L[c[0]]).length;
+      toast(restants
+        ? "Enregistré. " + restants + " champ" + (restants>1?"s":"") + " encore à compléter."
+        : "Documents légaux complets et publiés.", restants ? "" : "ok");
+      App.aller("dev");
+    })
+    .catch(err => { DB.legal = avant; toast("Publication impossible : " + err.message, "ko"); });
+}
+
+/* La console gagne son onglet */
+vueDev = function(){
+  if(!U.dev) return `<div class="vide"><h3>Accès réservé</h3><p class="small">Cette console est réservée aux comptes développeur.</p></div>`;
+  const onglets = [["questions","Questions"],["fiches","Fiches"],["cartes","Flashcards"],["livres","Livres"],
+                   ["matieres","Matières"],["users","Utilisateurs"],["licences","Licences"],
+                   ["legal","Légal"],["donnees","Données"]];
+  const rendus = { questions:devQuestions, fiches:devFiches, cartes:devCartes, livres:devLivres,
+                   matieres:devMatieres, users:devUsers, licences:devLicences,
+                   legal:devLegal, donnees:devDonnees };
+  return `
+  <header class="tete">
+    <p class="eyebrow">Console développeur</p>
+    <h1>Gérer le contenu</h1>
+    <p class="muted">Tout ce que tu modifies ici est immédiatement visible côté élève.</p>
+  </header>
+  <div class="matiere-onglets">
+    ${onglets.map(([k,n]) => `<button class="chip ${ongletDev===k?"actif":""}" onclick="ongletDev=${jsArg(k)};rechercheDev='';App.aller('dev')">${n}</button>`).join("")}
+  </div>
+  ${(rendus[ongletDev] || devQuestions)()}`;
+};
+
