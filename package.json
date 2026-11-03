@@ -9,7 +9,8 @@
     "three": "0.180.0"
   },
   "scripts": {
-    "test:atlas": "node --test tests/atlas*.test.mjs"
+    "test:atlas": "node --test tests/atlas*.test.mjs",
+    "benchmark:atlas": "node scripts/benchmark-atlas-loading.mjs"
   },
   "devDependencies": {
     "@gltf-transform/core": "4.5.1",

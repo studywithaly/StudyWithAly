@@ -2,3 +2,5 @@
 atlas/models/*.obj -text
 
 atlas/assets/**/*.glb -text
+
+atlas/assets/packs/*.bin -text

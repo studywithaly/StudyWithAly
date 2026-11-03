@@ -3,10 +3,10 @@ import {OrbitControls} from './vendor/OrbitControls.js';
 import {OBJLoader} from './vendor/OBJLoader.js';
 import {GLTFLoader} from './vendor/GLTFLoader.js';
 import {MeshoptDecoder} from './vendor/meshopt_decoder.mjs';
-import {AnatomicalAssetCache} from './asset-cache.mjs';
+import {AnatomicalAssetCache,planSceneDownloads} from './asset-cache.mjs';
 import {bodySystems,canonicalSystem} from './body-schema.mjs';
 
-export function createViewer(host,{onHover=()=>{},onSelect=()=>{},onExplore=()=>{},onZoom=()=>{},onStatus=()=>{}}={}){
+export function createViewer(host,{bundles={},onHover=()=>{},onSelect=()=>{},onExplore=()=>{},onZoom=()=>{},onStatus=()=>{}}={}){
  const renderer=new T.WebGLRenderer({antialias:true,alpha:true});
  renderer.setPixelRatio(Math.min(devicePixelRatio,1.75));renderer.localClippingEnabled=true;
  const canvas=renderer.domElement;canvas.tabIndex=0;
@@ -16,7 +16,7 @@ export function createViewer(host,{onHover=()=>{},onSelect=()=>{},onExplore=()=>
  const keyLight=new T.DirectionalLight(0xffffff,3);keyLight.position.set(1,-2,3);scene.add(keyLight);
  const fill=new T.DirectionalLight(0x89bfff,1.5);fill.position.set(-2,1,-2);scene.add(fill);
  const controls=new OrbitControls(camera,canvas);controls.enableDamping=false;controls.zoomToCursor=true;
- const cache=new AnatomicalAssetCache(),gltf=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder),obj=new OBJLoader();
+ const cache=new AnatomicalAssetCache({bundles}),gltf=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder),obj=new OBJLoader();
  const raycaster=new T.Raycaster(),pointer=new T.Vector2();
  let dead=false,root=new T.Group(),groups=new Map(),sceneBounds=null,clip=null,contextPlanes=[],selected=null,hovered=null,isolated=null,generation=0,animation=0,initialized=false;
  scene.add(root);let selection=new Set(),isolation=null;const state={layers:{},hidden:new Set(),hemisphere:'all'};
@@ -49,15 +49,15 @@ export function createViewer(host,{onHover=()=>{},onSelect=()=>{},onExplore=()=>
  const key=e=>{if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','+','=','-','r','R'].includes(e.key))return;e.preventDefault();finishAnimation();const offset=camera.position.clone().sub(controls.target);if(e.key.startsWith('Arrow'))offset.applyAxisAngle(e.key==='ArrowLeft'||e.key==='ArrowRight'?new T.Vector3(0,0,1):new T.Vector3(1,0,0),['ArrowLeft','ArrowUp'].includes(e.key)?.12:-.12);else if(e.key.toLowerCase()==='r'){reset();return;}else offset.multiplyScalar(e.key==='-'?1.1:.9);camera.position.copy(controls.target).add(offset);controls.update();render();};
  for(const [name,handler] of [['pointermove',move],['pointerleave',leave],['pointerdown',start],['pointerup',end],['pointercancel',cancel],['dblclick',dblclick],['keydown',key]])canvas.addEventListener(name,handler);
  canvas.addEventListener('wheel',wheel,{capture:true,passive:true});canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();if(!dead)onStatus('Contexte graphique perdu. Réouvrez l’Atlas pour recharger la vue.');});resize();
- async function parseModel(model,detail,signal){
-  const asset=model.variants?.[detail]||model.variants?.fine||{url:model.url,sha256:model.sha256},bytes=await cache.get(asset,signal);let group;
+ async function parseModel(model,detail,signal,useBundle){
+  const asset=model.variants?.[detail]||model.variants?.fine||{url:model.url,sha256:model.sha256},bytes=await cache.get(asset,signal,useBundle);let group;
   if(asset.url.endsWith('.obj'))group=obj.parse(new TextDecoder().decode(bytes));else group=(await gltf.parseAsync(bytes.slice(0),'')).scene;
   group.userData.layer=model.system||model.layer;group.userData.model=model;
   group.traverse(mesh=>{if(!mesh.isMesh)return;(Array.isArray(mesh.material)?mesh.material:[mesh.material]).forEach(m=>m.dispose());mesh.geometry.computeVertexNormals();const color=model.color||(/vein|venous|vena /i.test(model.name||'')?'#7195d1':null)||bodySystems.find(s=>s.id===canonicalSystem(model.system||model.layer))?.color||'#aaa';mesh.material=new T.MeshStandardMaterial({color,roughness:.68,side:T.DoubleSide});mesh.userData.structure=model.structure||model.id;mesh.userData.side=model.side||'midline';mesh.userData.baseOpacity=/cavity of|ventricular system|central canal/i.test(model.name||'')?.16:1;});return group;
  }
  async function showScene(node,models,{signal,view=null}={}){
-  const token=++generation,nextRoot=new T.Group(),nextGroups=new Map(),queue=models.slice();let count=0,failures=0;
-  await Promise.all(Array.from({length:4},async()=>{while(queue.length&&!dead&&!signal?.aborted&&token===generation){const model=queue.shift();try{const group=await parseModel(model,['body','reference','system'].includes(node.kind)?'coarse':'fine',signal);if(dead||signal?.aborted||token!==generation){disposeRoot(group);return;}const id=model.structure||model.id;if(nextGroups.has(id)){const existing=nextGroups.get(id);while(group.children.length)existing.add(group.children[0]);}else{nextGroups.set(id,group);nextRoot.add(group);}group.traverse(mesh=>{if(!mesh.isMesh)return;const name=model.name||'';if(node.id==='heart'&&/wall of/i.test(name))mesh.userData.baseOpacity=.25;if(node.id==='brain'&&/white matter of.*cerebral|occipital lobe|precentral|postcentral/.test(name.toLowerCase()))mesh.userData.baseOpacity=.32;if(node.kind==='region'&&node.id.endsWith('head')&&['skeletal','muscular'].includes(canonicalSystem(model.system)))mesh.userData.baseOpacity=.22;});count++;}catch(error){if(signal?.aborted)return;if(!failures)console.error('Atlas asset',model.id,error);failures++;}if(!dead&&token===generation)onStatus(`Préparation de ${node.name} · ${count}/${models.length} objets${failures?` · ${failures} échec(s)`:''}`);}}));
+  const token=++generation,nextRoot=new T.Group(),nextGroups=new Map(),queue=planSceneDownloads(models,['body','reference','system'].includes(node.kind)?'coarse':'fine',models.length>=8?bundles:{});let count=0,failures=0;
+  await Promise.all(Array.from({length:6},async()=>{while(queue.length&&!dead&&!signal?.aborted&&token===generation){const model=queue.shift();try{const group=await parseModel(model,['body','reference','system'].includes(node.kind)?'coarse':'fine',signal,models.length>=8);if(dead||signal?.aborted||token!==generation){disposeRoot(group);return;}const id=model.structure||model.id;if(nextGroups.has(id)){const existing=nextGroups.get(id);while(group.children.length)existing.add(group.children[0]);}else{nextGroups.set(id,group);nextRoot.add(group);}group.traverse(mesh=>{if(!mesh.isMesh)return;const name=model.name||'';if(node.id==='heart'&&/wall of/i.test(name))mesh.userData.baseOpacity=.25;if(node.id==='brain'&&/white matter of.*cerebral|occipital lobe|precentral|postcentral/.test(name.toLowerCase()))mesh.userData.baseOpacity=.32;if(node.kind==='region'&&node.id.endsWith('head')&&['skeletal','muscular'].includes(canonicalSystem(model.system)))mesh.userData.baseOpacity=.22;});count++;}catch(error){if(signal?.aborted)return;if(!failures)console.error('Atlas asset',model.id,error);failures++;}if(!dead&&token===generation)onStatus(`Préparation de ${node.name} · ${count}/${models.length} objets${failures?` · ${failures} échec(s)`:''}`);}}));
   if(dead||signal?.aborted||token!==generation){disposeRoot(nextRoot);throw new DOMException('Navigation annulée','AbortError');}if(models.length&&!count){disposeRoot(nextRoot);throw new Error('Aucun modèle n’a pu être chargé.');}
   finishAnimation();const old=root;root=nextRoot;groups=nextGroups;scene.add(root);selected=null;selection.clear();isolation=null;hovered=null;isolated=null;state.hidden.clear();state.hemisphere='all';clip=null;
   const bound=node.bounds;sceneBounds=bound?new T.Box3(new T.Vector3(...bound.slice(0,3)),new T.Vector3(...bound.slice(3))):new T.Box3().setFromObject(root);
