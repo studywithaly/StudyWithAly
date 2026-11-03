@@ -1,3 +1,4 @@
+const {gate}=require('../../server/security.cjs');
 const {services} = require('./notifications');
 const reply=(statusCode,body)=>({statusCode,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'private, no-store'},body:JSON.stringify(body)});
 const pick=(object,keys)=>Object.fromEntries(keys.filter(key=>object[key]!==undefined).map(key=>[key,object[key]]));
@@ -66,6 +67,7 @@ async function deleteAccount(db,admin,user,profile,rights,input) {
   return reply(200,{ok:true});
 }
 exports.handler=async event=>{
+  const rejected=gate(event);if(rejected)return rejected;
   if(event.httpMethod!=='POST')return reply(405,{erreur:'Méthode non autorisée.'});
   let input;try{input=JSON.parse(event.body||'{}');if(!input||typeof input!=='object'||Array.isArray(input))throw Error();}catch{return reply(400,{erreur:'Requête JSON invalide.'});}
   const {admin,db}=services();
@@ -116,3 +118,5 @@ exports.projectContent=projectContent;
 exports.mediaReferences=mediaReferences;
 exports.premium=premium;
 exports.deleteAccount=deleteAccount;
+
+exports.config={path:'/.netlify/functions/site-api',rateLimit:{windowLimit:120,windowSize:60,aggregateBy:['ip','domain']}};

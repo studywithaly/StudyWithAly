@@ -1,3 +1,4 @@
+const {gate}=require('../../server/security.cjs');
 // Ouvre le portail Stripe : l'abonné y gère sa carte, ses factures
 // et sa résiliation. Obligatoire pour rester en règle côté service client.
 const stripe = require("stripe")(process.env.STRIPE_CLE_SECRETE);
@@ -6,7 +7,7 @@ const stripe = require("stripe")(process.env.STRIPE_CLE_SECRETE);
 // Initialisation Firebase Admin. Le SDK Admin ignore les règles Firestore :
 // c'est ce qui rend les droits infalsifiables depuis le navigateur.
 // ---------------------------------------------------------------------------
-const admin = require("firebase-admin");
+const admin = require('../../server/firebase-admin.cjs');
 
 // Identifiants Firebase. Deux façons de les fournir, au choix :
 //   1. FIREBASE_SERVICE_ACCOUNT : le fichier JSON entier, collé tel quel.
@@ -48,10 +49,12 @@ async function utilisateurDepuisEntete(headers){
   const jeton = brut.startsWith("Bearer ") ? brut.slice(7) : null;
   if(!jeton) throw new Error("jeton absent");
   const decode = await admin.auth().verifyIdToken(jeton,true);
+  if((await db.collection('suppressionComptes').doc(decode.uid).get()).exists)throw Error('account-deleting');
   return { uid: decode.uid, email: decode.email };
 }
 
 exports.handler = async (event) => {
+  const rejected=gate(event);if(rejected)return rejected;
   if(event.httpMethod!=='POST')return reponse(405,{erreur:'Méthode non autorisée.'});
   let user;
   try{ user = await utilisateurDepuisEntete(event.headers); }
@@ -70,6 +73,8 @@ exports.handler = async (event) => {
 
   }catch(e){
     console.error("portail", e);
-    return reponse(500, { erreur: e.message });
+    return reponse(500, { erreur: "Service temporairement indisponible." });
   }
 };
+
+exports.config={path:'/.netlify/functions/portail-client',rateLimit:{windowLimit:10,windowSize:60,aggregateBy:['ip','domain']}};

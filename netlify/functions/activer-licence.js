@@ -1,3 +1,4 @@
+const {gate}=require('../../server/security.cjs');
 // Consomme un code de licence et accorde l'abonnement correspondant.
 // Passe par le serveur pour que le code ne puisse être utilisé qu'une fois.
 
@@ -5,7 +6,7 @@
 // Initialisation Firebase Admin. Le SDK Admin ignore les règles Firestore :
 // c'est ce qui rend les droits infalsifiables depuis le navigateur.
 // ---------------------------------------------------------------------------
-const admin = require("firebase-admin");
+const admin = require('../../server/firebase-admin.cjs');
 
 // Identifiants Firebase. Deux façons de les fournir, au choix :
 //   1. FIREBASE_SERVICE_ACCOUNT : le fichier JSON entier, collé tel quel.
@@ -50,6 +51,7 @@ async function utilisateurDepuisEntete(headers){
   return { uid: decode.uid, email: decode.email };
 }
 exports.handler = async (event) => {
+  const rejected=gate(event);if(rejected)return rejected;
   if(event.httpMethod !== "POST") return reponse(405, { erreur:"méthode non autorisée" });
 
   let user;
@@ -58,7 +60,7 @@ exports.handler = async (event) => {
 
   let code;
   try{code=String((JSON.parse(event.body||'{}').code)||'').trim().toUpperCase();}catch{return reponse(400,{erreur:'Requête invalide.'});}
-  if(!code) return reponse(400, { erreur:"code manquant" });
+  if(!/^SWA-[A-Z0-9]{4,16}-[A-Z0-9]{4,16}-[A-Z0-9]{4,16}$/.test(code)) return reponse(400, { erreur:"code manquant" });
 
   const ref = db.collection("contenu").doc("licences");
 
@@ -89,6 +91,8 @@ exports.handler = async (event) => {
     return reponse(200, resultat);
 
   }catch(e){
-    return reponse(400, { erreur: e.message });
+    return reponse(400, { erreur: "Service temporairement indisponible." });
   }
 };
+
+exports.config={path:'/.netlify/functions/activer-licence',rateLimit:{windowLimit:6,windowSize:60,aggregateBy:['ip','domain']}};

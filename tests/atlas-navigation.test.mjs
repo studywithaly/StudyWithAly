@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
-const html=await fs.readFile(new URL('../index.html',import.meta.url),'utf8');
+const html=await fs.readFile(new URL('../main.js',import.meta.url),'utf8');
 const learning=await fs.readFile(new URL('../learning.js',import.meta.url),'utf8');
 const atlas=await fs.readFile(new URL('../atlas.js',import.meta.url),'utf8');
 function fixture(){

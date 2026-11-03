@@ -1,3 +1,4 @@
+const {gate}=require('../../server/security.cjs');
 // Stripe is the payment provider. Only verified events may change entitlements.
 const stripe=require('stripe')(process.env.STRIPE_CLE_SECRETE);
 const {services}=require('./notifications');
@@ -80,6 +81,7 @@ async function applyEvent(event,effect,db,admin){
   });
 }
 exports.handler=async event=>{
+  const rejected=gate(event,{maxBytes:1048576,signature:true});if(rejected)return rejected;
   if(event.httpMethod!=='POST')return reply(405,{erreur:'Méthode non autorisée.'});
   let verified;
   try{verified=stripe.webhooks.constructEvent(event.isBase64Encoded?Buffer.from(event.body,'base64'):event.body,event.headers['stripe-signature'],process.env.STRIPE_SECRET_WEBHOOK);}

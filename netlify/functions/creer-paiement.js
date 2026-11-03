@@ -1,3 +1,4 @@
+const {gate}=require('../../server/security.cjs');
 // Crée une session de paiement Stripe.
 // Le prix n'est jamais lu depuis le navigateur : il est relu dans Firestore,
 // sinon n'importe qui pourrait s'acheter l'abonnement à un centime.
@@ -7,7 +8,7 @@ const stripe = require("stripe")(process.env.STRIPE_CLE_SECRETE);
 // Initialisation Firebase Admin. Le SDK Admin ignore les règles Firestore :
 // c'est ce qui rend les droits infalsifiables depuis le navigateur.
 // ---------------------------------------------------------------------------
-const admin = require("firebase-admin");
+const admin = require('../../server/firebase-admin.cjs');
 
 // Identifiants Firebase. Deux façons de les fournir, au choix :
 //   1. FIREBASE_SERVICE_ACCOUNT : le fichier JSON entier, collé tel quel.
@@ -90,6 +91,7 @@ const PLANS = {
 };
 
 exports.handler = async (event) => {
+  const rejected=gate(event);if(rejected)return rejected;
   if(event.httpMethod !== "POST") return reponse(405, { erreur:"méthode non autorisée" });
 
   let user;
@@ -98,11 +100,12 @@ exports.handler = async (event) => {
 
   let type,ref;
   try{({type,ref}=JSON.parse(event.body||'{}'));}catch{return reponse(400,{erreur:'Requête invalide.'});}
-  if(!['abo','livre'].includes(type)||typeof ref!=='string')return reponse(400,{erreur:'Achat invalide.'});
+  if(!['abo','livre'].includes(type)||typeof ref!=='string'||! /^[A-Za-z0-9_-]{1,128}$/.test(ref))return reponse(400,{erreur:'Achat invalide.'});
   const site = process.env.URL || process.env.DEPLOY_PRIME_URL || "";
   const retour = { success_url: site + "/?paiement=ok", cancel_url: site + "/?paiement=annule" };
 
   try{
+    if(type==='abo'&&!Object.hasOwn(PLANS,ref))return reponse(400,{erreur:'Formule inconnue.'});
     // On réutilise le client Stripe existant, pour que l'historique reste groupé
     const droits = await db.collection("droits").doc(user.uid).get();
     let client = droits.exists ? droits.data().clientStripe : null;
@@ -115,7 +118,7 @@ exports.handler = async (event) => {
     let session;
 
     if(type === "abo"){
-      const plan = PLANS[ref];
+      const plan = Object.hasOwn(PLANS,ref)?PLANS[ref]:null;
       if(!plan) return reponse(400, { erreur:"formule inconnue" });
       session = await stripe.checkout.sessions.create({
         mode:"subscription",
@@ -167,6 +170,8 @@ exports.handler = async (event) => {
 
   }catch(e){
     console.error("creer-paiement", e);
-    return reponse(500, { erreur: e.message });
+    return reponse(500, { erreur: "Service temporairement indisponible." });
   }
 };
+
+exports.config={path:'/.netlify/functions/creer-paiement',rateLimit:{windowLimit:10,windowSize:60,aggregateBy:['ip','domain']}};
