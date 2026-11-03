@@ -112,7 +112,7 @@ async function chargerContenu(){
 function sauver(){
   if(!MODE_CLOUD){ Store.ecrire(DB); return; }
   if(!U) return;
-  fdb.collection("users").doc(U.id).set(copie(U))
+  fdb.collection("users").doc(fauth.currentUser.uid).update(copie(SWA_SECURITY.profilePatch(U)))
      .catch(e => toast("Enregistrement impossible : " + e.message, "ko"));
 }
 /* Sauvegarde d'un autre compte (actions développeur) */
